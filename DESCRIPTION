@@ -1,0 +1,61 @@
+Package: DuckDBArray
+Version: 0.9.0
+Date: 2026-01-21
+Title: DuckDB-Backed DelayedArray Implementation
+Description:
+    Provides DuckDB-backed implementations of DelayedArray and DelayedMatrix
+    classes for efficient, out-of-memory operations on large array and matrix
+    datasets. The package includes DuckDBArray, DuckDBArraySeed, and DuckDBMatrix
+    classes with optimized matrixStats methods. Supports sparse arrays, grid
+    partitioning, and parallel processing for scalable genomic data analysis.
+Authors@R:
+    c(
+        person("Patrick", "Aboyoun", role=c("aut", "cre"), email="aboyounp@gene.com"),
+        person("Genentech, Inc.", role="cph")
+    )
+License: MIT + file LICENSE
+Depends:
+    R (>= 4.3.0),
+    methods,
+    DuckDBDataFrame,
+    DelayedArray,
+    SparseArray
+Imports:
+    BiocGenerics,
+    S4Vectors,
+    IRanges,
+    S4Arrays,
+    Matrix,
+    MatrixGenerics,
+    dplyr
+Suggests:
+    knitr,
+    rmarkdown,
+    BiocStyle,
+    testthat,
+    arrow,
+    BiocParallel,
+    matrixStats,
+    HDF5Array,
+    TileDBArray,
+    airway
+biocViews:
+    DataImport,
+    DataRepresentation,
+    Infrastructure,
+    Software
+VignetteBuilder: knitr
+RoxygenNote: 7.3.3
+Encoding: UTF-8
+Collate:
+    'DuckDBArraySeed-class.R'
+    'DuckDBArraySeed-utils.R'
+    'DuckDBArray-class.R'
+    'DuckDBArray-matrixStats.R'
+    'DuckDBArray-utils.R'
+    'DuckDBArraySeed-matrixStats.R'
+    'DuckDBMatrix-class.R'
+    'DuckDBMatrix-utils.R'
+    'createDimTables.R'
+    'rowDeviances.R'
+    'rowNnzs.R'
