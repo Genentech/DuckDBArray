@@ -49,9 +49,9 @@ the original array from coordinate format data.
 }
 \details{
 This function is particularly useful when working with partitioned arrays
-created by \code{BiocDuckDB::writeParquet}. The returned lookup tables map
-between dimension names and their positions in the original array, as well
-as identify which grid partition contains each dimension element.
+created by \code{writeCoordArray}. The returned lookup tables provide a
+mapping between dimension names and their positions in the original array,
+as well as identify which grid partition contains each dimension element.
 
 When the grid contains only one cell, the lookup tables contain only the
 dimension names and their indices. When multiple grid cells are present,
@@ -59,12 +59,16 @@ additional columns indicate which grid group each dimension element belongs
 to.
 }
 \examples{
-# Create dimension lookup tables for the state.x77 matrix
+# Write the state.x77 matrix to multiple Parquet files using grid partitioning
+tf <- tempfile()
 state_grid <- RegularArrayGrid(dim(state.x77), c(10, 4))
-createDimTables(state.x77, grid = state_grid)
+writeCoordArray(state.x77, file.path(tf, "state"), grid = state_grid)
+dimtbls <- createDimTables(state.x77, grid = state_grid)
+list.files(tf, full.names = TRUE, recursive = TRUE)
 
 }
 \seealso{
+\code{\link{writeCoordArray}} for writing arrays in coordinate format,
 \code{\link[S4Arrays]{ArrayGrid}} for grid partitioning,
 \code{\link[BiocParallel]{BiocParallelParam}} for parallel processing options
 }

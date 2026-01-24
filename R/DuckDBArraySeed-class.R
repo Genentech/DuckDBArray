@@ -151,7 +151,7 @@ NULL
 replaceSlots <- BiocGenerics:::replaceSlots
 
 #' @export
-#' @import methods
+#' @import methods BiocGenerics
 #' @importClassesFrom DuckDBDataFrame DuckDBTable
 #' @importClassesFrom S4Arrays Array
 setClass("DuckDBArraySeed", contains = "Array",
@@ -163,7 +163,6 @@ setClass("DuckDBArraySeed", contains = "Array",
 ###
 
 #' @export
-#' @importFrom BiocGenerics dbconn
 setMethod("dbconn", "DuckDBArraySeed", function(x) callGeneric(x@table))
 
 #' @export
@@ -185,12 +184,10 @@ setReplaceMethod("dimtbls", "DuckDBArraySeed", function(x, value) {
 })
 
 #' @export
-#' @importFrom BiocGenerics type
 #' @importFrom DuckDBDataFrame coltypes
 setMethod("type", "DuckDBArraySeed", function(x) unname(coltypes(x@table)))
 
 #' @export
-#' @importFrom BiocGenerics type<-
 #' @importFrom DuckDBDataFrame coltypes<-
 setReplaceMethod("type", "DuckDBArraySeed", function(x, value) {
     table <- x@table
@@ -308,7 +305,6 @@ setReplaceMethod("dimnames", "DuckDBArraySeed", function(x, value) {
 }
 
 #' @export
-#' @importFrom BiocGenerics as.data.frame
 #' @importFrom S4Arrays extract_array
 setMethod("extract_array", "DuckDBArraySeed", function(x, index) {
     index <- .extract_array_index(x, index)
@@ -346,7 +342,6 @@ setMethod("extract_array", "DuckDBArraySeed", function(x, index) {
 
 #' @export
 #' @importClassesFrom SparseArray COO_SparseArray
-#' @importFrom BiocGenerics as.data.frame
 #' @importFrom DuckDBDataFrame coltypes
 #' @importFrom SparseArray COO_SparseArray extract_sparse_array
 setMethod("extract_sparse_array", "DuckDBArraySeed", function(x, index) {
@@ -440,7 +435,6 @@ setMethod("[", "DuckDBArraySeed", function(x, i, j, ..., drop = TRUE) {
 ###
 
 #' @export
-#' @importFrom BiocGenerics aperm
 #' @importFrom DuckDBDataFrame nkey
 setMethod("aperm", "DuckDBArraySeed", function(a, perm, ...) {
     k <- nkey(a@table)
@@ -452,7 +446,6 @@ setMethod("aperm", "DuckDBArraySeed", function(a, perm, ...) {
 })
 
 #' @export
-#' @importFrom BiocGenerics t
 #' @importFrom DuckDBDataFrame nkey
 setMethod("t", "DuckDBArraySeed", function(x) {
     if (nkey(x@table) != 2L) {
@@ -466,7 +459,6 @@ setMethod("t", "DuckDBArraySeed", function(x) {
 ###
 
 #' @export
-#' @importFrom BiocGenerics type
 #' @importFrom S4Arrays is_sparse
 #' @importFrom S4Vectors classNameForDisplay
 setMethod("show", "DuckDBArraySeed", function(object) {

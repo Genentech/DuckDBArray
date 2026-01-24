@@ -1,97 +1,3 @@
-# writeParquet snippet from BiocDuckDB
-setGeneric("writeParquet", signature = "x",
-function(x, path, ...)
-{
-  standardGeneric("writeParquet")
-})
-
-.writeCoordArray <- function(x, path, indexcols, datacol, ...) {
-    # Create a list of columns containing the non-zero values and their indices
-    lst <- apply(nzwhich(x, arr.ind = TRUE), 2L, identity, simplify = FALSE)
-    names(lst) <- indexcols
-    lst[[datacol]] <- nzvals(x)
-
-    # Map back to the original indices
-    indices <- lapply(dimnames(x), as.integer)
-    for (j in seq_along(indices)) {
-        lst[[j]] <- indices[[j]][lst[[j]]]
-    }
-
-    # Convert to a data frame
-    class(lst) <- "data.frame"
-    attr(lst, "row.names") <- .set_row_names(length(lst[[1L]]))
-
-    arrow::write_dataset(lst, path, format = "parquet", compression = "zstd",
-                         compression_level = 3L, partitioning = NULL,
-                         min_rows_per_group = 491520L, ...)
-
-    invisible(NULL)
-}
-
-setMethod("writeParquet", "ANY",
-function(x,
-         path,
-         indexcols = names(dimnames(x)) %||% sprintf("index%d", seq_along(dim(x))),
-         indexrefs = NULL,
-         datacol = "value",
-         grid = defaultAutoGrid(COO_SparseArray(dim(x))),
-         grid_suffix = "_group",
-         BPPARAM = getAutoBPPARAM(),
-         ...)
-{
-    if (is.null(dim(x))) {
-        stop("the default method of writeParquet requires 'x' to be array-like")
-    }
-
-    if (!(is.null(indexrefs) || length(indexrefs) == length(indexcols))) {
-        stop("'indexrefs' must be NULL or a list of length(indexcols)")
-    }
-
-    if (inherits(x, "table")) {
-        x <- unclass(x)
-    }
-
-    # Make column names unique
-    unique_names <- make.unique(c(indexcols, datacol), sep = "_")
-    indexcols <- head(unique_names, -1L)
-    datacol <- tail(unique_names, 1L)
-
-    # Get dimensions of the array for storage optimization
-    dim_x <- dim(x)
-
-    # Manage dimnames
-    dimnames_x <- dimnames(x) %||% lapply(dim(x), function(d) NULL)
-    dimnames(x) <- lapply(dim(x), function(d) as.character(seq_len(d)))
-
-    if (length(grid) == 1L) {
-        .writeCoordArray(x, path = path, indexcols = indexcols,
-                         datacol = datacol, ...)
-    } else {
-        FUN <- function(x, path, indexcols, datacol, grid_suffix, ...)
-        {
-            grid <- effectiveGrid()
-            viewport <- currentViewport()
-            group <- as.vector(mapToGrid(start(viewport), grid)[["major"]])
-            subdir <- paste0(indexcols, grid_suffix, "=", group)
-            path <- do.call(file.path, c(list(path), subdir))
-            .writeCoordArray(x, path = path, indexcols = indexcols,
-                             datacol = datacol, ...)
-        }
-        blockApply(x, FUN = FUN,
-                   path = path,
-                   indexcols = indexcols,
-                   datacol = datacol,
-                   grid_suffix = grid_suffix,
-                   ...,
-                   grid = grid,
-                   as.sparse = TRUE,
-                   BPPARAM = BPPARAM,
-                   verbose = NA)
-    }
-
-    invisible(NULL)
-})
-
 # State dataset
 state_df <- data.frame(
   index1 = rep(rownames(state.x77), times = ncol(state.x77)),
@@ -101,7 +7,7 @@ state_df <- data.frame(
 state_df <- subset(state_df, value != 0)
 state_path <- file.path(tempfile(), "state")
 state_grid <- RegularArrayGrid(dim(state.x77), c(10, 4))
-writeParquet(state.x77, state_path, grid = state_grid)
+writeCoordArray(state.x77, state_path, grid = state_grid)
 state_tables <- createDimTables(state.x77, grid = state_grid)
 
 
@@ -123,7 +29,7 @@ arrow::write_parquet(titanic_df, titanic_parquet)
 data(airway, package = "airway")
 airway_counts <- SummarizedExperiment::assay(airway, "counts")
 airway_counts_path <- file.path(tempfile(), "airway_counts")
-writeParquet(airway_counts, airway_counts_path)
+writeCoordArray(airway_counts, airway_counts_path)
 
 
 # Random array

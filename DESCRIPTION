@@ -1,6 +1,6 @@
 Package: DuckDBArray
 Version: 0.9.0
-Date: 2026-01-21
+Date: 2026-01-23
 Title: DuckDB-Backed DelayedArray Implementation
 Description:
     Provides DuckDB-backed implementations of DelayedArray and DelayedMatrix
@@ -27,16 +27,17 @@ Imports:
     S4Arrays,
     Matrix,
     MatrixGenerics,
-    dplyr
+    dplyr,
+    arrow
 Suggests:
     knitr,
     rmarkdown,
     BiocStyle,
     testthat,
-    arrow,
-    BiocParallel,
-    matrixStats,
+    microbenchmark,
+    ExperimentHub,
     HDF5Array,
+    SummarizedExperiment,
     TileDBArray,
     airway
 biocViews:
@@ -59,3 +60,4 @@ Collate:
     'createDimTables.R'
     'rowDeviances.R'
     'rowNnzs.R'
+    'writeCoordArray.R'

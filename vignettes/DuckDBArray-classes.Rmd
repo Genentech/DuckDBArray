@@ -1,0 +1,756 @@
+---
+title: "Architecture of the DuckDBArray Package"
+author:
+- name: Patrick Aboyoun
+  email: aboyounp@gene.com
+  affiliation: Genentech, Inc.
+date: "Compiled: `r format(Sys.time(), '%B %d, %Y')`"
+package: DuckDBArray
+vignette: >
+  %\VignetteIndexEntry{Architecture of the DuckDBArray Package}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+output:
+  BiocStyle::html_document:
+    number_sections: true
+    toc: true
+    toc_depth: 4
+---
+
+```{r setup, echo=FALSE}
+library(BiocStyle)
+knitr::opts_chunk$set(error=FALSE, warning=FALSE, message=FALSE)
+```
+
+# Introduction
+
+The `r Biocpkg("DuckDBArray")` package provides DuckDB-backed implementations
+of `r Biocpkg("DelayedArray")` classes for efficient, out-of-memory operations
+on large array and matrix datasets. It builds upon the `r Biocpkg("DuckDBDataFrame")`
+foundation to deliver array-specific functionality with optimized matrixStats
+methods and sparse array support.
+
+## Position in the Bioconductor Ecosystem
+
+`r Biocpkg("DuckDBArray")` sits in the middle layer of the DuckDB-backed
+Bioconductor stack:
+
+```
+DuckDBDataFrame (foundation: tabular data + SQL)
+    ↓
+DuckDBArray (arrays/matrices + DelayedArray integration)
+    ↓
+BiocDuckDB (high-level I/O + analysis workflows)
+```
+
+| Class | Extends | Purpose |
+|-------|---------|---------|
+| *DuckDBArraySeed* | *Array* | Seed class for DelayedArray backend |
+| *DuckDBArray* | *DelayedArray* | N-dimensional array |
+| *DuckDBMatrix* | *DelayedMatrix* | 2D matrix specialization |
+
+The package is designed for both **infrastructure developers** implementing
+array-backed analyses and **end users** working with large genomic datasets.
+
+## Installation
+
+```{r install, eval=FALSE}
+if (!require("BiocManager"))
+    install.packages("BiocManager")
+BiocManager::install("DuckDBArray")
+```
+
+```{r load-package}
+library(DuckDBArray)
+library(DuckDBDataFrame)  # For examples
+```
+
+
+# Core Design Principles
+
+## The DelayedArray Backend Contract
+
+`r Biocpkg("DuckDBArray")` implements a DelayedArray backend by providing:
+
+1. **Seed class** (*DuckDBArraySeed*): Wraps a *DuckDBTable* from 
+   `r Biocpkg("DuckDBDataFrame")`
+2. **extract_array()** method: Materializes array blocks on demand
+3. **extract_sparse_array()** method: Efficient sparse block extraction
+4. **High-level classes**: *DuckDBArray* and *DuckDBMatrix* for user-facing API
+
+This architecture enables:
+- **Lazy evaluation**: Operations build a tree without immediate execution
+- **Block processing**: Efficient chunked computation
+- **Sparse optimization**: Minimal memory for sparse data
+- **SQL translation**: Array operations become SQL aggregations
+
+
+## Sparse Data Representation
+
+Sparse arrays are naturally represented in Parquet because only non-zero
+entries are stored. A sparse matrix with 1% density stores only 1% of the
+full matrix size:
+
+```
+Dense: 10,000 × 10,000 = 100M entries
+Sparse (1%): 1M non-zero entries in Parquet
+```
+
+DuckDB's columnar engine efficiently scans these non-zero entries.
+
+
+## Grid Partitioning
+
+For very large arrays, `r Biocpkg("DuckDBArray")` supports grid partitioning:
+
+- Arrays are split into regular grid blocks
+- Each block stored as a separate Parquet partition
+- Dimension tables map indices to grid groups
+- Operations process only relevant partitions
+
+This enables parallel processing and efficient subsetting.
+
+
+# The DuckDBArraySeed Class
+
+## Class Structure
+
+*DuckDBArraySeed* is the seed class that implements the DelayedArray backend:
+
+```{r DuckDBArraySeed-class}
+showClass("DuckDBArraySeed")
+```
+
+### Slots
+
+**table** (*DuckDBTable*)
+: A single-column DuckDBTable with `nkey(table) >= 1`. The keycols define
+  the array dimensions, and the single datacol contains the array values.
+
+**fill** (`atomic`)
+: The fill value for missing entries (typically 0 for sparse arrays).
+
+**drop** (`logical`)
+: Whether to drop dimensions of length 1 (for subsetting operations).
+
+
+## The Seed Contract
+
+*DuckDBArraySeed* implements the required seed methods:
+
+### dim() and dimnames()
+
+```{r DuckDBArraySeed-dim}
+# Create a simple 3D array seed
+array_df <- expand.grid(
+    i = 1:4,
+    j = 1:3,
+    k = 1:2
+)
+array_df$value <- rpois(nrow(array_df), lambda = 2)
+
+array_path <- tempfile(fileext = ".parquet")
+arrow::write_parquet(array_df, array_path)
+
+seed <- DuckDBArraySeed(array_path,
+                        datacol = "value",
+                        keycols = list(i = 1:4, j = 1:3, k = 1:2))
+
+# Dimensions from keycols
+dim(seed)
+
+# Dimension names
+dimnames(seed)
+```
+
+### extract_array()
+
+This is the core method that materializes array blocks:
+
+```{r DuckDBArraySeed-extract}
+# Extract a block
+extract_array(seed, list(1:2, 1:2, 1))
+```
+
+The implementation:
+1. Subsets the DuckDBTable to the requested indices
+2. Calls `as.data.frame()` to materialize the data
+3. Maps the results into an array with proper dimensions
+4. Fills missing entries with the fill value
+
+
+### extract_sparse_array()
+
+For sparse data, this method returns a `COO_SparseArray`:
+
+```{r DuckDBArraySeed-sparse}
+# Create sparse data (only non-zero entries)
+sparse_df <- data.frame(
+    i = c(1, 1, 2, 3, 4),
+    j = c(1, 3, 2, 1, 3),
+    k = c(1, 1, 2, 2, 1),
+    value = c(5, 3, 8, 2, 7)
+)
+
+sparse_path <- tempfile(fileext = ".parquet")
+arrow::write_parquet(sparse_df, sparse_path)
+
+sparse_seed <- DuckDBArraySeed(sparse_path,
+                               datacol = "value",
+                               keycols = list(i = 1:4, j = 1:3, k = 1:2))
+
+# Extract as sparse array
+sparse_block <- extract_sparse_array(sparse_seed, list(1:4, 1:3, 1))
+sparse_block
+```
+
+
+## Construction
+
+The *DuckDBArraySeed* constructor wraps *DuckDBTable* construction:
+
+```{r DuckDBArraySeed-construct}
+# From Parquet file
+seed <- DuckDBArraySeed(array_path,
+                        datacol = "value",
+                        keycols = list(i = 1:4, j = 1:3, k = 1:2))
+
+# From existing DuckDBTable
+tbl <- DuckDBTable(array_path,
+                   datacols = "value",
+                   keycols = list(i = 1:4, j = 1:3, k = 1:2))
+seed2 <- DuckDBArraySeed(tbl, datacol = "value",
+                         keycols = list(i = 1:4, j = 1:3, k = 1:2))
+```
+
+
+## Type System
+
+The seed inherits type detection from *DuckDBTable*:
+
+```{r DuckDBArraySeed-type}
+# Get array type
+type(seed)
+
+# Cast to different type
+type(seed) <- "double"
+type(seed)
+```
+
+
+# The DuckDBArray Class
+
+## Class Structure
+
+*DuckDBArray* extends *DelayedArray* and wraps a *DuckDBArraySeed*:
+
+```{r DuckDBArray-class}
+showClass("DuckDBArray")
+```
+
+This inheritance provides:
+- *DelayedArray*: Lazy evaluation and block processing
+- *DuckDBArraySeed*: DuckDB backend with SQL translation
+
+
+## Construction
+
+```{r DuckDBArray-construct}
+# Create DuckDBArray from seed
+arr <- DuckDBArray(seed)
+arr
+
+# Or directly from file
+arr2 <- DuckDBArray(array_path,
+                    datacol = "value",
+                    keycols = list(i = 1:4, j = 1:3, k = 1:2))
+```
+
+
+## Array Operations
+
+*DuckDBArray* supports the full array API:
+
+### Subsetting
+
+```{r DuckDBArray-subset}
+# Subset by indices
+arr[1:2, 1:2, 1]
+
+# Subset by dimension
+arr[, , 1]
+
+# Drop dimensions
+arr[1, , 1, drop = TRUE]
+```
+
+### Arithmetic
+
+```{r DuckDBArray-arithmetic}
+# Element-wise operations
+arr * 2
+arr + 10
+
+# Operations between arrays
+arr + arr
+```
+
+### Transformations
+
+```{r DuckDBArray-transform}
+# Permute dimensions
+aperm(arr, c(2, 1, 3))
+```
+
+
+## Lazy Evaluation
+
+Operations on *DuckDBArray* build a delayed operation tree:
+
+```{r DuckDBArray-lazy}
+# This doesn't execute immediately
+result <- log1p(arr) * 2 + 1
+
+# The seed is still DuckDBArraySeed
+seed(result)
+
+# Materialization happens on demand
+as.array(result[1:2, 1:2, 1])
+```
+
+
+## Block Processing
+
+For large arrays, operations can be processed in blocks:
+
+```{r DuckDBArray-blocks, eval=FALSE}
+library(DelayedArray)
+
+# Set block size
+setAutoBlockSize(1e8)  # 100 MB blocks
+
+# Operations process blocks automatically
+colSums(arr)  # Processes column-wise blocks
+```
+
+
+# The DuckDBMatrix Class
+
+## Class Structure
+
+*DuckDBMatrix* is a 2D specialization of *DuckDBArray*:
+
+```{r DuckDBMatrix-class}
+showClass("DuckDBMatrix")
+```
+
+### Validity Constraints
+
+*DuckDBMatrix* requires exactly 2 dimensions in the seed.
+
+
+## Construction
+
+```{r DuckDBMatrix-construct}
+# Create 2D data
+matrix_df <- expand.grid(
+    gene = paste0("GENE", 1:100),
+    cell = paste0("CELL", 1:50)
+)
+matrix_df$count <- rpois(nrow(matrix_df), lambda = 5)
+
+matrix_path <- tempfile(fileext = ".parquet")
+arrow::write_parquet(matrix_df, matrix_path)
+
+# Create DuckDBMatrix
+mat <- DuckDBMatrix(matrix_path,
+                    datacol = "count",
+                    keycols = list(gene = paste0("GENE", 1:100),
+                                   cell = paste0("CELL", 1:50)))
+mat
+```
+
+
+### Row/Column Operations
+
+```{r DuckDBMatrix-rowcol}
+# Sums
+rowSums(mat)
+colSums(mat)
+
+# Means
+rowMeans(mat)
+colMeans(mat)
+```
+
+
+# Matrix Statistics
+
+## Optimized matrixStats Methods
+
+`r Biocpkg("DuckDBArray")` provides SQL-optimized implementations of
+`r CRANpkg("matrixStats")` functions:
+
+```{r matrixStats}
+library(MatrixGenerics)
+
+# Row statistics
+rowSums(mat)
+rowMeans(mat)
+rowVars(mat)
+rowSds(mat)
+rowMins(mat)
+rowMaxs(mat)
+
+# Column statistics
+colSums(mat)
+colMeans(mat)
+colVars(mat)
+```
+
+These translate to efficient SQL aggregations:
+```sql
+-- rowSums becomes:
+SELECT gene, SUM(count) FROM table GROUP BY gene
+
+-- rowVars becomes:
+SELECT gene, VAR_SAMP(count) FROM table GROUP BY gene
+```
+
+
+## Custom Statistics
+
+The package includes specialized functions:
+
+### rowDeviances()
+
+Compute deviances for negative binomial models:
+
+```{r rowDeviances}
+# Deviance residuals for each gene
+deviances <- rowDeviances(mat)
+head(deviances)
+```
+
+### rowNnzs() / colNnzs()
+
+Count non-zero entries:
+
+```{r rowNnzs}
+# Non-zero counts per gene
+nnz_genes <- rowNnzs(mat)
+head(nnz_genes)
+
+# Non-zero counts per cell
+nnz_cells <- colNnzs(mat)
+head(nnz_cells)
+```
+
+
+# Sparse Arrays
+
+## Sparse Representation
+
+*DuckDBArray* efficiently handles sparse data:
+
+```{r sparse-array}
+# Create very sparse data (0.1% density)
+set.seed(123)
+n_nonzero <- 1000
+sparse_df <- data.frame(
+    i = sample(1:10000, n_nonzero),
+    j = sample(1:10000, n_nonzero),
+    value = rpois(n_nonzero, lambda = 10)
+)
+
+sparse_path <- tempfile(fileext = ".parquet")
+arrow::write_parquet(sparse_df, sparse_path)
+
+sparse_mat <- DuckDBMatrix(sparse_path,
+                           datacol = "value",
+                           keycols = list(i = 1:10000, j = 1:10000))
+
+# Check sparsity
+is_sparse(sparse_mat)
+
+# Sparse operations are efficient
+colSums(sparse_mat)  # Only processes non-zero entries
+```
+
+
+## Sparse Block Extraction
+
+The `extract_sparse_array()` method returns sparse blocks:
+
+```{r sparse-extract}
+# Extract a sparse block
+sparse_block <- extract_sparse_array(seed(sparse_mat), list(1:100, 1:100))
+sparse_block
+
+# Efficient storage
+object.size(sparse_block)
+```
+
+
+## Coercion to Sparse Formats
+
+```{r sparse-coerce}
+# Coerce to COO_SparseArray
+sparse_arr <- as(sparse_mat[1:100, 1:100], "COO_SparseArray")
+sparse_arr
+
+# Coerce to dgCMatrix (from Matrix package)
+dgc <- as(sparse_mat[1:100, 1:100], "dgCMatrix")
+class(dgc)
+```
+
+
+# Grid Partitioning
+
+## The createDimTables() Function
+
+For very large arrays, `createDimTables()` creates dimension lookup tables
+that map indices to grid partitions:
+
+```{r createDimTables}
+# Create dimension tables for state.x77
+library(S4Arrays)
+
+state_grid <- RegularArrayGrid(dim(state.x77), c(10, 4))
+dim_tables <- createDimTables(state.x77, grid = state_grid)
+
+dim_tables
+```
+
+These tables enable:
+1. **Efficient filtering**: Only read relevant partitions
+2. **Parallel processing**: Process partitions independently
+3. **Memory efficiency**: Load one partition at a time
+
+
+## Using Dimension Tables
+
+```{r dimtbls-usage}
+# Create array with dimension tables
+# (Usually done by writeParquet in BiocDuckDB)
+arr_with_dims <- DuckDBArray(array_path,
+                             datacol = "value",
+                             keycols = list(i = 1:4, j = 1:3, k = 1:2),
+                             dimtbls = dim_tables)
+
+# Dimension tables attached to seed
+dimtbls(seed(arr_with_dims))
+```
+
+
+# Advanced Topics
+
+## Type Casting
+
+Arrays can be cast to different types:
+
+```{r type-casting}
+# Original type
+type(arr)
+
+# Cast to integer
+arr_int <- arr
+type(arr_int) <- "integer"
+type(arr_int)
+
+# Cast to double
+arr_dbl <- arr
+type(arr_dbl) <- "double"
+type(arr_dbl)
+```
+
+
+## Dimension Names
+
+Arrays support dimension names:
+
+```{r dimnames-ops}
+# Set dimension names
+dimnames(arr) <- list(
+    paste0("R", 1:4),
+    paste0("C", 1:3),
+    paste0("L", 1:2)
+)
+
+arr
+
+# Subset by names
+arr[c("R1", "R2"), c("C1", "C2"), "L1"]
+```
+
+
+## Combining Arrays
+
+```{r array-combine}
+# Bind along existing dimension
+arr1 <- arr[, , 1]
+arr2 <- arr[, , 2]
+combined <- rbind(arr1, arr2)
+dim(combined)
+```
+
+
+# Integration with DelayedArray
+
+## Delayed Operations
+
+*DuckDBArray* participates in the DelayedArray ecosystem:
+
+```{r delayed-ops}
+library(DelayedArray)
+
+# Combine with other DelayedArray backends
+hdf5_path <- tempfile(fileext = ".h5")
+library(HDF5Array)
+h5_mat <- writeHDF5Array(matrix(rnorm(100), 10, 10), hdf5_path)
+
+# Operations work across backends
+duck_mat <- mat[1:10, 1:10]
+# combined <- duck_mat + h5_mat  # Would work if dimensions match
+```
+
+
+## Block Processing
+
+```{r block-processing}
+# Custom block processing
+process_blocks <- function(block) {
+    # Custom operation on each block
+    sum(block)
+}
+
+# Apply to blocks
+grid <- defaultAutoGrid(mat)
+blockApply(mat, process_blocks, grid = grid)
+```
+
+
+## Realization
+
+Convert to other backends:
+
+```{r realization, eval=FALSE}
+# Realize as HDF5Array
+h5_realized <- realize(mat, "HDF5Array")
+
+# Realize as ordinary array
+arr_realized <- as.array(mat)
+```
+
+
+# Use Cases
+
+## Large Count Matrices
+
+Single-cell RNA-seq count matrices are ideal for *DuckDBMatrix*:
+
+```{r use-case-counts, eval=FALSE}
+# Typical single-cell matrix: 30,000 genes × 100,000 cells
+counts <- DuckDBMatrix("counts.parquet",
+                       datacol = "count",
+                       keycols = list(gene = gene_ids, cell = cell_ids))
+
+# Efficient gene-level statistics
+gene_means <- rowMeans(counts)
+gene_vars <- rowVars(counts)
+
+# Cell-level QC
+cell_totals <- colSums(counts)
+cell_detected <- colCounts(counts, value = 0)
+```
+
+
+## Sparse Genomic Data
+
+Variant matrices or accessibility matrices are naturally sparse:
+
+```{r use-case-sparse, eval=FALSE}
+# scATAC-seq peak × cell matrix (99% sparse)
+peaks <- DuckDBMatrix("peaks.parquet",
+                      datacol = "accessibility",
+                      keycols = list(peak = peak_ids, cell = cell_ids))
+
+# Only non-zero entries stored in Parquet
+# Efficient aggregations
+peak_sums <- rowSums(peaks)  # Only processes non-zero values
+```
+
+
+## Multi-Dimensional Data
+
+Higher-dimensional arrays for multi-condition experiments:
+
+```{r use-case-multidim, eval=FALSE}
+# Gene × Cell × Condition × Timepoint
+multi_arr <- DuckDBArray("multi_cond.parquet",
+                         datacol = "expression",
+                         keycols = list(gene = genes,
+                                       cell = cells,
+                                       condition = conditions,
+                                       time = timepoints))
+
+# Subset to specific condition
+cond1 <- multi_arr[, , "Treatment", ]
+```
+
+
+# Performance Considerations
+
+## When to Use DuckDBArray
+
+**Advantages**:
+- Arrays larger than RAM
+- Sparse data (< 10% density)
+- Columnar aggregations (row/column sums, means)
+- Parquet files already on disk
+- Block-wise processing
+
+**Limitations**:
+- Random element access slower than in-memory
+- Dense small arrays have overhead
+- Some operations require materialization
+
+
+## Optimization Tips
+
+1. **Use sparse representation**: Store only non-zero entries
+2. **Leverage grid partitioning**: For arrays > 1 GB
+3. **Process by blocks**: Use DelayedArray block processing
+4. **Filter early**: Subset before expensive operations
+5. **Choose appropriate block size**: Balance memory and I/O
+
+
+## Benchmarking
+
+```{r benchmark, eval=FALSE}
+# Compare with in-memory
+library(microbenchmark)
+
+# Small array (in-memory faster)
+small_duck <- DuckDBMatrix(small_path, ...)
+small_mem <- as.matrix(small_duck)
+
+microbenchmark(
+    duck = colSums(small_duck),
+    memory = colSums(small_mem),
+    times = 10
+)
+
+# Large array (DuckDB faster)
+large_duck <- DuckDBMatrix(large_path, ...)
+# large_mem <- as.matrix(large_duck)  # Won't fit in RAM!
+
+system.time(colSums(large_duck))  # Efficient SQL aggregation
+```
+
+
+# Session Information
+
+```{r sessioninfo}
+sessionInfo()
+```
