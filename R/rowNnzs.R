@@ -48,21 +48,18 @@
 #' @include DuckDBArray-matrixStats.R
 #'
 #' @export
-#' @importFrom BiocGenerics type
 #' @rdname rowNnzs
 setGeneric("rowNnzs", function(x, value = vector(type(x), 1L), ...)
     standardGeneric("rowNnzs")
 )
 
 #' @export
-#' @importFrom BiocGenerics type
 #' @rdname rowNnzs
 setGeneric("colNnzs", function(x, value = vector(type(x), 1L), ...)
     standardGeneric("colNnzs")
 )
 
 #' @export
-#' @importFrom BiocGenerics type
 #' @importFrom MatrixGenerics rowCounts
 #' @importFrom S4Vectors tail
 #' @rdname rowNnzs
@@ -73,7 +70,6 @@ function(x, value = vector(type(x), 1L), ...) {
 })
 
 #' @export
-#' @importFrom BiocGenerics type
 #' @importFrom MatrixGenerics rowCounts
 #' @importFrom S4Vectors tail
 #' @rdname rowNnzs
@@ -85,7 +81,6 @@ function(x, value = vector(type(x), 1L), na.rm = FALSE, dims = 1, ..., useNames 
 })
 
 #' @export
-#' @importFrom BiocGenerics type
 #' @importFrom MatrixGenerics colCounts
 #' @importFrom S4Vectors head
 #' @rdname rowNnzs
@@ -96,7 +91,6 @@ function(x, value = vector(type(x), 1L), ...) {
 })
 
 #' @export
-#' @importFrom BiocGenerics type
 #' @importFrom MatrixGenerics colCounts
 #' @importFrom S4Vectors head
 #' @rdname rowNnzs

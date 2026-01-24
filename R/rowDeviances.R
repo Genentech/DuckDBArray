@@ -291,7 +291,6 @@ function(x, family = c("binomial", "poisson"), ...,
 
 #' @export
 #' @rdname rowDeviances
-#' @importFrom BiocGenerics as.data.frame
 #' @importFrom dplyr collect group_by left_join mutate summarize
 #' @importFrom stats setNames
 #' @importFrom DuckDBDataFrame tblconn

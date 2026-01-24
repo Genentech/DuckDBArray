@@ -153,7 +153,6 @@ setClass("DuckDBArray", contains = "DelayedArray", slots = c(seed = "DuckDBArray
 ###
 
 #' @export
-#' @importFrom BiocGenerics dbconn
 setMethod("dbconn", "DuckDBArray", function(x) callGeneric(x@seed))
 
 #' @export
@@ -175,11 +174,9 @@ setReplaceMethod("dimtbls", "DuckDBArray", function(x, value) {
 })
 
 #' @export
-#' @importFrom BiocGenerics type
 setMethod("type", "DuckDBArray", function(x) callGeneric(x@seed))
 
 #' @export
-#' @importFrom BiocGenerics type<-
 setReplaceMethod("type", "DuckDBArray", function(x, value) {
     replaceSlots(x, seed = callGeneric(x@seed, value = value), check = FALSE)
 })
@@ -222,13 +219,11 @@ setAs("DuckDBArray", "COO_SparseArray", function(from) as(from, "SparseArray"))
 ###
 
 #' @export
-#' @importFrom BiocGenerics aperm
 setMethod("aperm", "DuckDBArray", function(a, perm, ...) {
     replaceSlots(a, seed = aperm(a@seed, perm = perm, ...), check = FALSE)
 })
 
 #' @export
-#' @importFrom BiocGenerics t
 setMethod("t", "DuckDBArray", function(x) {
     replaceSlots(x, seed = t(x@seed), check = FALSE)
 })
