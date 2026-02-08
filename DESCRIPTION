@@ -1,6 +1,6 @@
 Package: DuckDBArray
-Version: 0.9.1
-Date: 2026-02-06
+Version: 0.9.2
+Date: 2026-02-07
 Title: DuckDB-Backed DelayedArray Implementation
 Description:
     Provides DuckDB-backed implementations of DelayedArray and DelayedMatrix
@@ -36,8 +36,10 @@ Suggests:
     testthat,
     microbenchmark,
     BiocParallel,
+    DelayedMatrixStats,
     ExperimentHub,
     HDF5Array,
+    sparseMatrixStats,
     SummarizedExperiment,
     TileDBArray,
     airway
