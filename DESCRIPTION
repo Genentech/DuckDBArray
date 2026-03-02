@@ -34,6 +34,7 @@ Suggests:
     rmarkdown,
     BiocStyle,
     testthat,
+    matrixStats,
     microbenchmark,
     BiocParallel,
     DelayedMatrixStats,
