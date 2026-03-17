@@ -137,7 +137,7 @@ function(x,
     invisible(NULL)
 }
 
-#' @importFrom arrow Array write_dataset
+#' @importFrom arrow Array write_dataset write_parquet
 #' @importFrom SparseArray nzwhich nzvals
 .writeCoordArray <- function(x, path, indexcols, datacol, dim_x, arrowtype, ...) {
     # Create a list of columns containing the non-zero values and their indices
@@ -167,32 +167,37 @@ function(x,
     class(lst) <- "data.frame"
     attr(lst, "row.names") <- .set_row_names(length(lst[[1L]]))
 
-    # Row group size tuning for DuckDB query performance:
-    #
-    # DuckDB processes data in vectors of 2048 rows (STANDARD_VECTOR_SIZE).
-    # Row group sizes that are multiples of 2048 align with DuckDB's execution.
-    #
-    # Benchmarks on realistic sparse single-cell data (30K genes x 50K cells,
-    # 75M non-zeros) showed:
-    #
-    # | min_rows_per_group | File Size | Single Gene Query |
-    # |--------------------|-----------|-------------------|
-    # |    122,880 (60x)   |  286.2 MB |       0.014 sec   |
-    # |    245,760 (120x)  |  237.4 MB |       0.008 sec   |
-    # |    491,520 (240x)  |  208.7 MB |       0.004 sec   | <- chosen
-    # |    983,040 (480x)  |  194.2 MB |       0.004 sec   |
-    # |  1,966,080 (960x)  |  193.6 MB |       0.004 sec   |
-    #
-    # 491,520 (240 vectors) provides:
-    # - 27% smaller files vs DuckDB default (122,880)
-    # - Fastest selective gene queries
-    # - Good balance of compression and query performance
-    #
-    # See: duckdb/src/include/duckdb/storage/storage_info.hpp
-    #      duckdb/src/include/duckdb/common/vector_size.hpp
-    write_dataset(lst, path, format = "parquet", compression = "zstd",
-                  compression_level = 3L, partitioning = NULL,
-                  min_rows_per_group = 491520L, ...)
+    if (nrow(lst) == 0L) {
+        write_parquet(lst, file.path(path, "part-0.parquet"),
+                      compression = "zstd", compression_level = 3L, ...)
+    } else {
+        # Row group size tuning for DuckDB query performance:
+        #
+        # DuckDB processes data in vectors of 2048 rows (STANDARD_VECTOR_SIZE).
+        # Row group sizes that are multiples of 2048 align with DuckDB's execution.
+        #
+        # Benchmarks on realistic sparse single-cell data (30K genes x 50K cells,
+        # 75M non-zeros) showed:
+        #
+        # | min_rows_per_group | File Size | Single Gene Query |
+        # |--------------------|-----------|-------------------|
+        # |    122,880 (60x)   |  286.2 MB |       0.014 sec   |
+        # |    245,760 (120x)  |  237.4 MB |       0.008 sec   |
+        # |    491,520 (240x)  |  208.7 MB |       0.004 sec   | <- chosen
+        # |    983,040 (480x)  |  194.2 MB |       0.004 sec   |
+        # |  1,966,080 (960x)  |  193.6 MB |       0.004 sec   |
+        #
+        # 491,520 (240 vectors) provides:
+        # - 27% smaller files vs DuckDB default (122,880)
+        # - Fastest selective gene queries
+        # - Good balance of compression and query performance
+        #
+        # See: duckdb/src/include/duckdb/storage/storage_info.hpp
+        #      duckdb/src/include/duckdb/common/vector_size.hpp
+        write_dataset(lst, path, format = "parquet", compression = "zstd",
+                      compression_level = 3L, partitioning = NULL,
+                      min_rows_per_group = 491520L, ...)
+    }
 
     invisible(NULL)
 }
