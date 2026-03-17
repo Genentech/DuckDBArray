@@ -168,6 +168,9 @@ function(x,
     attr(lst, "row.names") <- .set_row_names(length(lst[[1L]]))
 
     if (nrow(lst) == 0L) {
+        if (!dir.exists(path)) {
+            dir.create(path, recursive = TRUE)
+        }
         write_parquet(lst, file.path(path, "part-0.parquet"),
                       compression = "zstd", compression_level = 3L, ...)
     } else {
