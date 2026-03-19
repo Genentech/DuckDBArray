@@ -199,7 +199,8 @@ function(x,
         #      duckdb/src/include/duckdb/common/vector_size.hpp
         write_dataset(lst, path, format = "parquet", compression = "zstd",
                       compression_level = 3L, partitioning = NULL,
-                      min_rows_per_group = 491520L, ...)
+                      min_rows_per_group = 491520L, write_statistics = TRUE,
+                      ...)
     }
 
     invisible(NULL)
