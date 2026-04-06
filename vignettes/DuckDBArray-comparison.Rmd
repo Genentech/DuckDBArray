@@ -89,7 +89,7 @@ library(DuckDBArray)
 library(Matrix)
 
 # Create a sparse matrix
-mat <- Matrix(sample(0:10, 100*100, replace=TRUE, prob=c(0.9, rep(0.01, 11))),
+mat <- Matrix(sample(0:10, 100*100, replace=TRUE, prob=c(0.9, rep(0.01, 10))),
               nrow=100, ncol=100, sparse=TRUE)
 
 # Write to Parquet (transposed for efficient column access)
