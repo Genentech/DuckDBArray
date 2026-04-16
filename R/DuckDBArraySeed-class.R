@@ -349,7 +349,7 @@ setMethod("extract_array", "DuckDBArraySeed", function(x, index) {
 #' @export
 #' @importClassesFrom SparseArray COO_SparseArray
 #' @importFrom DuckDBDataFrame coltypes
-#' @importFrom SparseArray COO_SparseArray extract_sparse_array SVT_SparseArray
+#' @importFrom SparseArray COO_SparseArray extract_sparse_array
 setMethod("extract_sparse_array", "DuckDBArraySeed", function(x, index) {
     if (!identical(vector(coltypes(x@table), 1L), x@fill)) {
         return(as(extract_array(x, index), "SVT_SparseArray"))
@@ -371,8 +371,8 @@ setMethod("extract_sparse_array", "DuckDBArraySeed", function(x, index) {
     }
     if (nrow(df) == 0L) {
         dim <- lengths(dimnames, use.names = FALSE)
-        return(SVT_SparseArray(array(), dim = dim, dimnames = dimnames,
-                               type = typeof(df[[1L]])))
+        arr <- array(x@fill, dim = dim, dimnames = dimnames)
+        return(as(arr, "SVT_SparseArray"))
     }
 
     # Columns are ordered: datacol (column 1), then keycols (columns 2, 3, ...)
