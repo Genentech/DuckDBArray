@@ -320,6 +320,12 @@ setMethod("extract_array", "DuckDBArraySeed", function(x, index) {
     # Fill output array
     table <- x@table[dimnames, ]
     df <- as.data.frame(table, optional = TRUE, limit.rows = FALSE)
+    if (nrow(df) == 0L) {
+        if (x@drop) {
+            output <- as.array(drop(output))
+        }
+        return(output)
+    }
 
     # Columns are ordered: datacol (column 1), then keycols (columns 2, 3, ...)
     midx <- matrix(NA_character_, nrow = nrow(df), ncol = length(dimnames),
@@ -343,10 +349,10 @@ setMethod("extract_array", "DuckDBArraySeed", function(x, index) {
 #' @export
 #' @importClassesFrom SparseArray COO_SparseArray
 #' @importFrom DuckDBDataFrame coltypes
-#' @importFrom SparseArray COO_SparseArray extract_sparse_array
+#' @importFrom SparseArray COO_SparseArray extract_sparse_array SVT_SparseArray
 setMethod("extract_sparse_array", "DuckDBArraySeed", function(x, index) {
     if (!identical(vector(coltypes(x@table), 1L), x@fill)) {
-        return(as(extract_array(x, index), "COO_SparseArray"))
+        return(as(extract_array(x, index), "SVT_SparseArray"))
     }
 
     index <- .extract_array_index(x, index)
@@ -361,7 +367,12 @@ setMethod("extract_sparse_array", "DuckDBArraySeed", function(x, index) {
         if ((length(arr) == 0L) && (prod(lengths(index)) == 1L)) {
             arr <- array(x@fill)
         }
-        return(as(arr, "COO_SparseArray"))
+        return(as(arr, "SVT_SparseArray"))
+    }
+    if (nrow(df) == 0L) {
+        dim <- lengths(dimnames, use.names = FALSE)
+        return(SVT_SparseArray(array(), dim = dim, dimnames = dimnames,
+                               type = typeof(df[[1L]])))
     }
 
     # Columns are ordered: datacol (column 1), then keycols (columns 2, 3, ...)
@@ -372,8 +383,9 @@ setMethod("extract_sparse_array", "DuckDBArraySeed", function(x, index) {
         nzcoo[, j] <- .match_int(df[[j + 1L]], index[[j]])
     }
     nzdata <- df[[1L]] # datacol is always column 1
-    COO_SparseArray(dim = dim, nzcoo = nzcoo, nzdata = nzdata,
-                    dimnames = dimnames, check = FALSE)
+    coo <- COO_SparseArray(dim = dim, nzcoo = nzcoo, nzdata = nzdata,
+                           dimnames = dimnames, check = FALSE)
+    as(coo, "SVT_SparseArray")
 })
 
 #' @export
