@@ -141,7 +141,7 @@ function(x,
 #' @importFrom SparseArray nzwhich nzvals
 .writeCoordArray <- function(x, path, indexcols, datacol, dim_x, arrowtype, ...) {
     # Create a list of columns containing the non-zero values and their indices
-    lst <- apply(nzwhich(x, arr.ind = TRUE), 2L, identity, simplify = FALSE)
+    lst <- asplit(nzwhich(x, arr.ind = TRUE), 2L)
     names(lst) <- indexcols
     lst[[datacol]] <- nzvals(x)
 
