@@ -12,6 +12,12 @@ writeCoordArray(
   grid = defaultAutoGrid(COO_SparseArray(dim(x))),
   grid_suffix = "_group",
   BPPARAM = getAutoBPPARAM(),
+  arrowtype = NULL,
+  max_dim = NULL,
+  append = FALSE,
+  along = NULL,
+  offset = 0L,
+  group_offset = 0L,
   ...
 )
 }
@@ -37,7 +43,77 @@ directories if the grid contains more than one cell. Defaults to "_group".}
 parallel processing when \code{grid} contains multiple cells. Defaults to
 \code{getAutoBPPARAM()}.}
 
-\item{...}{Additional arguments to pass to \code{arrow::write_dataset}.}
+\item{arrowtype}{An optional \link[arrow]{DataType} for the value column
+(e.g. \code{arrow::int32()}, \code{arrow::uint16()},
+\code{arrow::float64()}). When \code{NULL} and \code{append = FALSE}, the
+type is inferred from the data: the narrowest type capable of representing
+the range of non-zero values if they are all integer-valued, and
+otherwise \code{double}. When \code{NULL} and \code{append = TRUE}, the
+type is read from an existing parquet file under \code{path} so that the
+appended slab always matches the existing value-column schema. When
+supplied explicitly in append mode, it is verified to match the existing
+schema; a mismatch aborts the call before any file is written.}
+
+\item{max_dim}{Optional integer vector of length \code{length(dim(x))}
+giving an upper bound on the coordinates in each dimension. Controls the
+arrow type chosen for each index column: the narrowest unsigned integer
+type that can represent \code{0..max_dim[j]} is picked for column
+\code{indexcols[j]}. When \code{NULL} and \code{append = FALSE},
+\code{dim(x)} is used. When \code{NULL} and \code{append = TRUE}, the
+index-column types are read from an existing parquet file under
+\code{path} so that the appended slab always matches the existing
+index-column schema. When supplied explicitly in append mode, the
+resulting types are verified to match the existing schema; a mismatch
+aborts the call before any file is written. The caller does not need to
+know the exact final extent, only an upper bound on it; setting
+\code{max_dim} too high only costs a slightly wider integer type on
+disk.}
+
+\item{append}{Logical; when \code{TRUE}, write additional hive-style
+partitions into an existing directory previously created by
+\code{writeCoordArray}. Append mode is only supported for hive-partitioned
+output (i.e. \code{length(grid) > 1L}); each cell of the supplied
+\code{grid} produces a new partition directory along dimension
+\code{along}. Before writing, \code{writeCoordArray} performs several
+corruption-prevention checks against the existing dataset:
+\itemize{
+  \item \code{path} must already exist and be laid out as a hive
+  partitioning (top-level entries must all be
+  \code{paste0(indexcols[1], grid_suffix, "=", <integer>)} subdirectories).
+  \item At least one parquet file must exist under \code{path}, and its
+  schema must contain every \code{indexcols[j]} and \code{datacol}.
+  \item The value-column and every index-column arrow type must match
+  the existing schema. If \code{arrowtype}/\code{max_dim} were supplied,
+  a mismatch errors; if not, the existing types are adopted.
+  \item No partition directory that this call would write to may already
+  exist (otherwise \code{group_offset} is too small and the call would
+  silently overwrite previously-written data).
+}
+Because arrow's dataset reader requires a uniform schema across files,
+these checks make silent schema drift and silent partition collisions
+impossible. Defaults to \code{FALSE}.}
+
+\item{along}{Integer index of the dimension along which to append new
+partitions. Required when \code{append = TRUE}.}
+
+\item{offset}{Non-negative integer added to the coordinates in dimension
+\code{along} for every non-zero written in this call. Typically the total
+extent already written along \code{along} by previous calls. Defaults to
+\code{0L}.}
+
+\item{group_offset}{Non-negative integer added to the partition group
+index along dimension \code{along} (i.e. the value embedded in the
+\code{paste0(indexcols[along], grid_suffix)} subdirectory) so that new
+partition directories do not collide with existing ones. Typically the
+total number of partition groups already written along \code{along} by
+previous calls. Defaults to \code{0L}.}
+
+\item{...}{Additional arguments to pass to \code{arrow::write_dataset}.
+Note that \code{existing_data_behavior} defaults to \code{"error"} (rather
+than arrow's default of \code{"overwrite_or_ignore"}) so that a re-run
+into a populated \code{path} fails loudly instead of silently clobbering
+or merging existing data. Pass \code{existing_data_behavior = "delete_matching"}
+or similar to override.}
 }
 \description{
 An \code{arrow::write_dataset} wrapper function to write array-like objects
@@ -50,6 +126,39 @@ tf <- tempfile()
 state_grid <- RegularArrayGrid(dim(state.x77), c(10, 4))
 writeCoordArray(state.x77, file.path(tf, "state"), grid = state_grid)
 list.files(tf, full.names = TRUE, recursive = TRUE)
+
+# Append mode: write two column-slabs as distinct hive partitions without
+# first materializing cbind(slab1, slab2). Omitting 'arrowtype' and
+# 'max_dim' is safe -- both are read from the existing schema so the
+# appended slab is guaranteed to match.
+tf2 <- tempfile()
+slab1 <- state.x77[, 1:4]
+slab2 <- state.x77[, 5:8]
+grid1 <- RegularArrayGrid(dim(slab1), c(10L, 2L))  # 2 col partitions
+grid2 <- RegularArrayGrid(dim(slab2), c(10L, 2L))  # 2 more col partitions
+writeCoordArray(slab1, file.path(tf2, "state"), grid = grid1)
+writeCoordArray(slab2, file.path(tf2, "state"), grid = grid2,
+                append = TRUE, along = 2L,
+                offset = ncol(slab1), group_offset = dim(grid1)[2L])
+
+# Pinning 'arrowtype' / 'max_dim' is still useful when the first slab's
+# inferred schema is narrower than you want the final dataset to have
+# (e.g. a small first slab that picks uint8 but you know later slabs
+# will need uint16). Pin both on every call for a fully-predictable
+# dataset schema.
+tf3 <- tempfile()
+int_slab   <- state.x77[, c("Population", "Income")]
+float_slab <- state.x77[, c("Illiteracy", "Life Exp")]
+grid_i <- RegularArrayGrid(dim(int_slab),   c(10L, 2L))
+grid_f <- RegularArrayGrid(dim(float_slab), c(10L, 2L))
+max_dim <- c(nrow(state.x77), ncol(state.x77))
+writeCoordArray(int_slab, file.path(tf3, "state"), grid = grid_i,
+                arrowtype = arrow::float64(), max_dim = max_dim)
+writeCoordArray(float_slab, file.path(tf3, "state"), grid = grid_f,
+                arrowtype = arrow::float64(), max_dim = max_dim,
+                append = TRUE, along = 2L,
+                offset = ncol(int_slab),
+                group_offset = dim(grid_i)[2L])
 
 }
 \author{
