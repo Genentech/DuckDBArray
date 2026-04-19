@@ -101,6 +101,7 @@
 #' }
 #'
 #' @include DuckDBArray-class.R
+#' @include DuckDBArraySeed-matrixStats.R
 #'
 #' @keywords utilities methods
 #'
