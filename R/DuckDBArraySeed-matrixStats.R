@@ -99,6 +99,7 @@
 #' }
 #'
 #' @include DuckDBArraySeed-class.R
+#' @include DuckDBTable-matrixStats.R
 #'
 #' @keywords utilities methods
 #'
