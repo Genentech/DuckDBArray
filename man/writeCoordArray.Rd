@@ -2,9 +2,45 @@
 % Please edit documentation in R/writeCoordArray.R
 \name{writeCoordArray}
 \alias{writeCoordArray}
+\alias{writeCoordArray,ANY-method}
+\alias{writeCoordArray,DuckDBArray-method}
 \title{Write an Array-Like Object in Coordinate Format}
 \usage{
 writeCoordArray(
+  x,
+  path,
+  indexcols = names(dimnames(x)) \%||\% sprintf("index\%d", seq_along(dim(x))),
+  datacol = "value",
+  grid = defaultAutoGrid(COO_SparseArray(dim(x))),
+  grid_suffix = "_group",
+  BPPARAM = getAutoBPPARAM(),
+  arrowtype = NULL,
+  max_dim = NULL,
+  append = FALSE,
+  along = NULL,
+  offset = 0L,
+  group_offset = 0L,
+  ...
+)
+
+\S4method{writeCoordArray}{ANY}(
+  x,
+  path,
+  indexcols = names(dimnames(x)) \%||\% sprintf("index\%d", seq_along(dim(x))),
+  datacol = "value",
+  grid = defaultAutoGrid(COO_SparseArray(dim(x))),
+  grid_suffix = "_group",
+  BPPARAM = getAutoBPPARAM(),
+  arrowtype = NULL,
+  max_dim = NULL,
+  append = FALSE,
+  along = NULL,
+  offset = 0L,
+  group_offset = 0L,
+  ...
+)
+
+\S4method{writeCoordArray}{DuckDBArray}(
   x,
   path,
   indexcols = names(dimnames(x)) \%||\% sprintf("index\%d", seq_along(dim(x))),
