@@ -73,22 +73,21 @@
 #'
 #' @author Patrick Aboyoun
 #'
-#' @aliases
-#' Ops,DuckDBArray,DuckDBArray-method
-#' Ops,DuckDBArray,atomic-method
-#' Ops,atomic,DuckDBArray-method
-#' Ops,DuckDBArray,missing-method
-#' !,DuckDBArray-method
-#' Math,DuckDBArray-method
+#' @aliases Ops,DuckDBArray,DuckDBArray-method
+#' @aliases Ops,DuckDBArray,atomic-method
+#' @aliases Ops,atomic,DuckDBArray-method
+#' @aliases Ops,DuckDBArray,missing-method
+#' @aliases !,DuckDBArray-method
+#' @aliases Math,DuckDBArray-method
 #'
-#' is.finite,DuckDBArray-method
-#' is.infinite,DuckDBArray-method
-#' is.nan,DuckDBArray-method
-#' sweep,DuckDBArray-method
+#' @aliases is.finite,DuckDBArray-method
+#' @aliases is.infinite,DuckDBArray-method
+#' @aliases is.nan,DuckDBArray-method
+#' @aliases sweep,DuckDBArray-method
 #'
-#' is_nonzero,DuckDBArray-method
-#' nzcount,DuckDBArray-method
-#' nzvals,DuckDBArray-method
+#' @aliases is_nonzero,DuckDBArray-method
+#' @aliases nzcount,DuckDBArray-method
+#' @aliases nzvals,DuckDBArray-method
 #'
 #' @seealso
 #' \itemize{

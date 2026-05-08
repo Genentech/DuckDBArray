@@ -32,15 +32,14 @@
 #'   \item \code{\link{DuckDBArray-utils}} for array utilities
 #' }
 #'
-#' @aliases
-#' %*%,DuckDBMatrix,numeric-method
-#' %*%,numeric,DuckDBMatrix-method
-#' crossprod,DuckDBMatrix,missing-method
-#' crossprod,DuckDBMatrix,numeric-method
-#' crossprod,numeric,DuckDBMatrix-method
-#' tcrossprod,DuckDBMatrix,missing-method
-#' tcrossprod,DuckDBMatrix,numeric-method
-#' tcrossprod,numeric,DuckDBMatrix-method
+#' @aliases %*%,DuckDBMatrix,numeric-method
+#' @aliases %*%,numeric,DuckDBMatrix-method
+#' @aliases crossprod,DuckDBMatrix,missing-method
+#' @aliases crossprod,DuckDBMatrix,numeric-method
+#' @aliases crossprod,numeric,DuckDBMatrix-method
+#' @aliases tcrossprod,DuckDBMatrix,missing-method
+#' @aliases tcrossprod,DuckDBMatrix,numeric-method
+#' @aliases tcrossprod,numeric,DuckDBMatrix-method
 #'
 #' @include DuckDBMatrix-class.R
 #'

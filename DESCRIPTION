@@ -1,6 +1,6 @@
 Package: DuckDBArray
-Version: 0.9.9
-Date: 2026-05-01
+Version: 0.9.10
+Date: 2026-05-08
 Title: DuckDB-Backed DelayedArray Implementation
 Description:
     Provides DuckDB-backed implementations of DelayedArray and DelayedMatrix
@@ -54,7 +54,6 @@ biocViews:
     Infrastructure,
     Software
 VignetteBuilder: knitr
-RoxygenNote: 7.3.3
 Encoding: UTF-8
 Collate:
     'DuckDBArraySeed-class.R'
@@ -73,3 +72,4 @@ Collate:
     'writeCoordArray-generic.R'
     'writeCoordArray-methods.R'
     'writeCoordArray-types.R'
+Config/roxygen2/version: 8.0.0

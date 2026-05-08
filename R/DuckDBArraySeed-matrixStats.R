@@ -74,21 +74,20 @@
 #'
 #' @author Patrick Aboyoun
 #'
-#' @aliases
-#' rowCounts,DuckDBArraySeed-method
-#' colCounts,DuckDBArraySeed-method
-#' rowMaxs,DuckDBArraySeed-method
-#' colMaxs,DuckDBArraySeed-method
-#' rowMeans,DuckDBArraySeed-method
-#' colMeans,DuckDBArraySeed-method
-#' rowMins,DuckDBArraySeed-method
-#' colMins,DuckDBArraySeed-method
-#' rowSums,DuckDBArraySeed-method
-#' colSums,DuckDBArraySeed-method
-#' rowSds,DuckDBArraySeed-method
-#' colSds,DuckDBArraySeed-method
-#' rowVars,DuckDBArraySeed-method
-#' colVars,DuckDBArraySeed-method
+#' @aliases rowCounts,DuckDBArraySeed-method
+#' @aliases colCounts,DuckDBArraySeed-method
+#' @aliases rowMaxs,DuckDBArraySeed-method
+#' @aliases colMaxs,DuckDBArraySeed-method
+#' @aliases rowMeans,DuckDBArraySeed-method
+#' @aliases colMeans,DuckDBArraySeed-method
+#' @aliases rowMins,DuckDBArraySeed-method
+#' @aliases colMins,DuckDBArraySeed-method
+#' @aliases rowSums,DuckDBArraySeed-method
+#' @aliases colSums,DuckDBArraySeed-method
+#' @aliases rowSds,DuckDBArraySeed-method
+#' @aliases colSds,DuckDBArraySeed-method
+#' @aliases rowVars,DuckDBArraySeed-method
+#' @aliases colVars,DuckDBArraySeed-method
 #'
 #' @seealso
 #' \itemize{

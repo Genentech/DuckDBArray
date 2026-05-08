@@ -74,21 +74,20 @@
 #'
 #' @author Patrick Aboyoun
 #'
-#' @aliases
-#' rowCounts,DuckDBArray-method
-#' colCounts,DuckDBArray-method
-#' rowMaxs,DuckDBArray-method
-#' colMaxs,DuckDBArray-method
-#' rowMeans,DuckDBArray-method
-#' colMeans,DuckDBArray-method
-#' rowMins,DuckDBArray-method
-#' colMins,DuckDBArray-method
-#' rowSums,DuckDBArray-method
-#' colSums,DuckDBArray-method
-#' rowSds,DuckDBArray-method
-#' colSds,DuckDBArray-method
-#' rowVars,DuckDBArray-method
-#' colVars,DuckDBArray-method
+#' @aliases rowCounts,DuckDBArray-method
+#' @aliases colCounts,DuckDBArray-method
+#' @aliases rowMaxs,DuckDBArray-method
+#' @aliases colMaxs,DuckDBArray-method
+#' @aliases rowMeans,DuckDBArray-method
+#' @aliases colMeans,DuckDBArray-method
+#' @aliases rowMins,DuckDBArray-method
+#' @aliases colMins,DuckDBArray-method
+#' @aliases rowSums,DuckDBArray-method
+#' @aliases colSums,DuckDBArray-method
+#' @aliases rowSds,DuckDBArray-method
+#' @aliases colSds,DuckDBArray-method
+#' @aliases rowVars,DuckDBArray-method
+#' @aliases colVars,DuckDBArray-method
 #'
 #' @seealso
 #' \itemize{

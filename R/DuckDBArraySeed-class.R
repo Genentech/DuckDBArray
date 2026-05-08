@@ -109,31 +109,30 @@
 #'
 #' pqaseed <- DuckDBArraySeed(tf, datacol = "fate", keycols = c("Class", "Sex", "Age", "Survived"))
 #'
-#' @aliases
-#' DuckDBArraySeed-class
+#' @aliases DuckDBArraySeed-class
 #'
-#' dbconn,DuckDBArraySeed-method
-#' tblconn,DuckDBArraySeed-method
-#' dimtbls,DuckDBArraySeed-method
-#' dimtbls<-,DuckDBArraySeed-method
-#' type,DuckDBArraySeed-method
-#' type<-,DuckDBArraySeed-method
+#' @aliases dbconn,DuckDBArraySeed-method
+#' @aliases tblconn,DuckDBArraySeed-method
+#' @aliases dimtbls,DuckDBArraySeed-method
+#' @aliases dimtbls<-,DuckDBArraySeed-method
+#' @aliases type,DuckDBArraySeed-method
+#' @aliases type<-,DuckDBArraySeed-method
 #'
-#' dim,DuckDBArraySeed-method
-#' dimnames,DuckDBArraySeed-method
-#' dimnames<-,DuckDBArraySeed,ANY-method
-#' extract_array,DuckDBArraySeed-method
-#' extract_sparse_array,DuckDBArraySeed-method
-#' DelayedArray,DuckDBArraySeed-method
+#' @aliases dim,DuckDBArraySeed-method
+#' @aliases dimnames,DuckDBArraySeed-method
+#' @aliases dimnames<-,DuckDBArraySeed,ANY-method
+#' @aliases extract_array,DuckDBArraySeed-method
+#' @aliases extract_sparse_array,DuckDBArraySeed-method
+#' @aliases DelayedArray,DuckDBArraySeed-method
 #'
-#' DuckDBArraySeed
+#' @aliases DuckDBArraySeed
 #'
-#' [,DuckDBArraySeed,ANY,ANY,ANY-method
+#' @aliases [,DuckDBArraySeed,ANY,ANY,ANY-method
 #'
-#' aperm,DuckDBArraySeed-method
-#' t,DuckDBArraySeed-method
+#' @aliases aperm,DuckDBArraySeed-method
+#' @aliases t,DuckDBArraySeed-method
 #'
-#' show,DuckDBArraySeed-method
+#' @aliases show,DuckDBArraySeed-method
 #'
 #' @seealso
 #' \itemize{

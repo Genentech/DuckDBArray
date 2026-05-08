@@ -70,22 +70,21 @@
 #'
 #' @author Patrick Aboyoun
 #'
-#' @aliases
-#' Ops,DuckDBArraySeed,DuckDBArraySeed-method
-#' Ops,DuckDBArraySeed,atomic-method
-#' Ops,atomic,DuckDBArraySeed-method
-#' Ops,DuckDBArraySeed,missing-method
-#' !,DuckDBArraySeed-method
-#' Math,DuckDBArraySeed-method
+#' @aliases Ops,DuckDBArraySeed,DuckDBArraySeed-method
+#' @aliases Ops,DuckDBArraySeed,atomic-method
+#' @aliases Ops,atomic,DuckDBArraySeed-method
+#' @aliases Ops,DuckDBArraySeed,missing-method
+#' @aliases !,DuckDBArraySeed-method
+#' @aliases Math,DuckDBArraySeed-method
 #'
-#' is.finite,DuckDBArraySeed-method
-#' is.infinite,DuckDBArraySeed-method
-#' is.nan,DuckDBArraySeed-method
-#' sweep,DuckDBArraySeed-method
+#' @aliases is.finite,DuckDBArraySeed-method
+#' @aliases is.infinite,DuckDBArraySeed-method
+#' @aliases is.nan,DuckDBArraySeed-method
+#' @aliases sweep,DuckDBArraySeed-method
 #'
-#' is_nonzero,DuckDBArraySeed-method
-#' nzcount,DuckDBArraySeed-method
-#' is_sparse,DuckDBArraySeed-method
+#' @aliases is_nonzero,DuckDBArraySeed-method
+#' @aliases nzcount,DuckDBArraySeed-method
+#' @aliases is_sparse,DuckDBArraySeed-method
 #'
 #' @seealso
 #' \itemize{

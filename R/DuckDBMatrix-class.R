@@ -122,14 +122,13 @@
 #'
 #' pqmat <- DuckDBMatrix(tf, row = "rowname", col = "colname", datacol = "value")
 #'
-#' @aliases
-#' DuckDBMatrix-class
-#' matrixClass,DuckDBArray-method
+#' @aliases DuckDBMatrix-class
+#' @aliases matrixClass,DuckDBArray-method
 #'
-#' DuckDBMatrix
+#' @aliases DuckDBMatrix
 #'
-#' [,DuckDBMatrix,ANY,ANY,ANY-method
-#' coerce,DuckDBMatrix,COO_SparseMatrix-method
+#' @aliases [,DuckDBMatrix,ANY,ANY,ANY-method
+#' @aliases coerce,DuckDBMatrix,COO_SparseMatrix-method
 #'
 #' @seealso
 #' \itemize{

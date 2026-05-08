@@ -107,24 +107,23 @@
 #'
 #' pqarray <- DuckDBArray(tf, datacol = "fate", keycols = c("Class", "Sex", "Age", "Survived"))
 #'
-#' @aliases
-#' DuckDBArray-class
+#' @aliases DuckDBArray-class
 #'
-#' dbconn,DuckDBArray-method
-#' tblconn,DuckDBArray-method
-#' dimtbls,DuckDBArray-method
-#' dimtbls<-,DuckDBArray-method
-#' type,DuckDBArray-method
-#' type<-,DuckDBArray-method
-#' dimnames<-,DuckDBArray,ANY-method
+#' @aliases dbconn,DuckDBArray-method
+#' @aliases tblconn,DuckDBArray-method
+#' @aliases dimtbls,DuckDBArray-method
+#' @aliases dimtbls<-,DuckDBArray-method
+#' @aliases type,DuckDBArray-method
+#' @aliases type<-,DuckDBArray-method
+#' @aliases dimnames<-,DuckDBArray,ANY-method
 #'
-#' DuckDBArray
+#' @aliases DuckDBArray
 #'
-#' [,DuckDBArray,ANY,ANY,ANY-method
-#' coerce,DuckDBArray,COO_SparseArray-method
+#' @aliases [,DuckDBArray,ANY,ANY,ANY-method
+#' @aliases coerce,DuckDBArray,COO_SparseArray-method
 #'
-#' aperm,DuckDBArray-method
-#' t,DuckDBArray-method
+#' @aliases aperm,DuckDBArray-method
+#' @aliases t,DuckDBArray-method
 #'
 #' @seealso
 #' \itemize{

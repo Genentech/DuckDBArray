@@ -97,22 +97,21 @@
 #'   \item \code{\link[S4Vectors]{RectangularData}} for the base class
 #' }
 #'
-#' @aliases
-#' rowCounts,DuckDBTable-method
-#' colCounts,DuckDBTable-method
-#' rowMaxs,DuckDBTable-method
-#' colMaxs,DuckDBTable-method
-#' rowMeans,DuckDBTable-method
-#' colMeans,DuckDBTable-method
-#' rowMins,DuckDBTable-method
-#' colMins,DuckDBTable-method
-#' rowSums,DuckDBTable-method
-#' colSums,DuckDBTable-method
-#' rowSds,DuckDBTable-method
-#' colSds,DuckDBTable-method
-#' rowVars,DuckDBTable-method
-#' colVars,DuckDBTable-method
-#' sweep,DuckDBTable-method
+#' @aliases rowCounts,DuckDBTable-method
+#' @aliases colCounts,DuckDBTable-method
+#' @aliases rowMaxs,DuckDBTable-method
+#' @aliases colMaxs,DuckDBTable-method
+#' @aliases rowMeans,DuckDBTable-method
+#' @aliases colMeans,DuckDBTable-method
+#' @aliases rowMins,DuckDBTable-method
+#' @aliases colMins,DuckDBTable-method
+#' @aliases rowSums,DuckDBTable-method
+#' @aliases colSums,DuckDBTable-method
+#' @aliases rowSds,DuckDBTable-method
+#' @aliases colSds,DuckDBTable-method
+#' @aliases rowVars,DuckDBTable-method
+#' @aliases colVars,DuckDBTable-method
+#' @aliases sweep,DuckDBTable-method
 #'
 #' @keywords utilities methods
 #'
