@@ -258,7 +258,11 @@ function(x, path, indexcols, datacol, arrowtype, ...)
 
 ### Build index mapping temp tables
 #' @importFrom DBI dbAppendTable dbExecute dbGetQuery
-.buildIndexMappings <- function(tbl, indexcols, keycols, grid = NULL) {
+#' @importFrom DuckDBDataFrame arrowType
+.buildIndexMappings <-
+function(tbl, indexcols, keycols, grid = NULL, along = NULL, offset = 0L,
+         group_offset = 0L)
+{
     # For each dimension, create temp table: old_key → new_idx → grid_group
     # Returns list(mapping_tables = c(names), cleanup_sql = c(DROP statements))
 
@@ -273,9 +277,15 @@ function(x, path, indexcols, datacol, arrowtype, ...)
         old_keys <- keycols[[col]]
         n_keys <- length(old_keys)
         new_indices <- seq_len(n_keys)
+        if (!is.null(along) && j == along && offset > 0L) {
+            new_indices <- new_indices + offset
+        }
 
         # Compute which grid partition each index belongs to
         grid_groups <- .computeGridGroup(n_keys, grid, j)
+        if (!is.null(along) && j == along && group_offset > 0L) {
+            grid_groups <- grid_groups + group_offset
+        }
 
         # Generate unique temp table name
         temp_suffix <- basename(tempfile(pattern = ""))
@@ -283,9 +293,9 @@ function(x, path, indexcols, datacol, arrowtype, ...)
         mapping_tables[j] <- temp_name
 
         # Determine optimal integer types using existing helpers
-        old_key_type <- .arrowType(old_keys)
-        new_idx_type <- .arrowType(new_indices)
-        grid_group_type <- .arrowType(grid_groups)
+        old_key_type <- arrowType(old_keys)
+        new_idx_type <- arrowType(new_indices)
+        grid_group_type <- arrowType(grid_groups)
 
         # Convert Arrow types to DuckDB type names
         old_key_duckdb <- .arrowToDuckDBTypeName(old_key_type)
@@ -317,8 +327,8 @@ function(x, path, indexcols, datacol, arrowtype, ...)
 #' @importFrom DBI dbExecute
 #' @importFrom DuckDBDataFrame dbconn tblconn
 .writeDuckDBArrayPartitionedWithPartitionBy <-
-function(x, path, indexcols, datacol, grid, grid_suffix, idxtypes,
-         arrowtype, ...)
+function(x, path, indexcols, datacol, grid, grid_suffix, idxtypes, arrowtype,
+         along = NULL, offset = 0L, group_offset = 0L, ...)
 {
     # Extract components from DuckDBArray once
     seed <- x@seed
@@ -328,7 +338,9 @@ function(x, path, indexcols, datacol, grid, grid_suffix, idxtypes,
 
     # Create index mappings ONCE for entire dataset with grid_group column
     # The grid_group column is computed using S4Arrays::mapToGrid
-    mappings_result <- .buildIndexMappings(tbl, indexcols, keycols, grid = grid)
+    mappings_result <- .buildIndexMappings(tbl, indexcols, keycols, grid = grid,
+                                           along = along, offset = offset,
+                                           group_offset = group_offset)
     mappings <- mappings_result[["mapping_tables"]]
 
     # Setup cleanup handler for mapping tables

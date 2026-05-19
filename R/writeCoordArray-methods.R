@@ -20,6 +20,7 @@
 # append = TRUE, or a "no-op" list with along = NULL / offset = 0L /
 # group_offset = 0L when append = FALSE.
 #' @importFrom S4Vectors isSingleNumber isTRUEorFALSE
+#' @importFrom DuckDBDataFrame validateAppendOffset
 .validateAppend <-
 function(append, grid, along, offset, group_offset, path, ndim)
 {
@@ -39,10 +40,7 @@ function(append, grid, along, offset, group_offset, path, ndim)
         stop("'along' must be a single integer in 1:", ndim,
              " when 'append = TRUE'")
     }
-    if (!isSingleNumber(offset) || offset != as.integer(offset) ||
-        offset < 0L) {
-        stop("'offset' must be a single non-negative integer")
-    }
+    offset <- validateAppendOffset(offset)
     if (!isSingleNumber(group_offset) ||
         group_offset != as.integer(group_offset) ||
         group_offset < 0L) {
@@ -53,7 +51,7 @@ function(append, grid, along, offset, group_offset, path, ndim)
     }
 
     list(along = as.integer(along),
-         offset = as.integer(offset),
+         offset = offset,
          group_offset = as.integer(group_offset))
 }
 
@@ -243,6 +241,7 @@ function(x,
 
 #' @export
 #' @importFrom DelayedArray blockApply defaultAutoGrid getAutoBPPARAM
+#' @importFrom DuckDBDataFrame checkHiveAppendPartitions
 #' @importFrom S4Vectors head tail
 #' @importFrom SparseArray COO_SparseArray nzvals
 #' @rdname writeCoordArray
@@ -264,7 +263,7 @@ function(x,
 {
     # Input normalization
     if (is.null(dim(x))) {
-        stop("the default method of writeParquet requires 'x' to be array-like")
+        stop("the default method of writeCoordArray requires 'x' to be array-like")
     }
     if (inherits(x, "table")) {
         x <- unclass(x)
@@ -308,9 +307,9 @@ function(x,
         arrowtype <- reconciled$arrowtype
         idxtypes <- reconciled$idxtypes
 
-        .checkAppendPartitions(path = path, indexcols = indexcols,
-                               grid_suffix = grid_suffix, grid = grid,
-                               along = along, group_offset = group_offset)
+        checkHiveAppendPartitions(path = path, indexcols = indexcols,
+                                   grid_suffix = grid_suffix, grid = grid,
+                                   along = along, group_offset = group_offset)
     }
 
     # Value-column type inference (non-append only)
@@ -351,6 +350,7 @@ function(x,
 #' @importFrom DBI dbGetQuery
 #' @importFrom dbplyr sql_render
 #' @importFrom DuckDBArray dbconn tblconn
+#' @importFrom DuckDBDataFrame checkHiveAppendPartitions
 #' @rdname writeCoordArray
 setMethod("writeCoordArray", "DuckDBArray",
 function(x,
@@ -376,6 +376,7 @@ function(x,
     seed <- x@seed
     conn <- dbconn(seed)
     tbl <- tblconn(seed)
+    ndim <- length(dim(x))
 
     # Auto-detect indexcols from table keycols if not provided
     if (is.null(indexcols)) {
@@ -387,20 +388,46 @@ function(x,
     indexcols <- head(unique_names, -1L)
     datacol <- tail(unique_names, 1L)
 
-    # Extract arrow types from DuckDB schema (skip inference)
-    schema_probe <- dbGetQuery(conn, sprintf(
-        "SELECT * FROM (%s) LIMIT 0",
-        sql_render(tbl)
-    ))
+    .validateArrowtype(arrowtype)
 
-    # Map DuckDB types to arrow types
-    arrowtype <- .duckdbTypeToArrow(class(schema_probe[[datacol]])[1L])
-    idxtypes <- lapply(indexcols, function(col) {
-        .duckdbTypeToArrow(class(schema_probe[[col]])[1L])
-    })
+    ap <- .validateAppend(append, grid, along, offset, group_offset,
+                          path, ndim)
+    along <- ap$along
+    offset <- ap$offset
+    group_offset <- ap$group_offset
+
+    max_dim <- .validateMaxDim(max_dim, x, append, along, offset, ndim)
+    idxtypes <- .computeIdxtypes(dim(x), max_dim, append, along, offset)
+
+    if (append) {
+        reconciled <- .reconcileAppendSchema(path, indexcols, datacol,
+                                             arrowtype, max_dim, idxtypes)
+        arrowtype <- reconciled$arrowtype
+        idxtypes <- reconciled$idxtypes
+        checkHiveAppendPartitions(path = path, indexcols = indexcols,
+                                   grid_suffix = grid_suffix, grid = grid,
+                                   along = along, group_offset = group_offset)
+    } else {
+        # Extract arrow types from DuckDB schema when not appending
+        schema_probe <- dbGetQuery(conn, sprintf(
+            "SELECT * FROM (%s) LIMIT 0",
+            sql_render(tbl)
+        ))
+        if (is.null(arrowtype)) {
+            arrowtype <- .duckdbTypeToArrow(class(schema_probe[[datacol]])[1L])
+        }
+        if (is.null(max_dim)) {
+            idxtypes <- lapply(indexcols, function(col) {
+                .duckdbTypeToArrow(class(schema_probe[[col]])[1L])
+            })
+        }
+    }
 
     if (length(grid) == 1L) {
-        # Single-file write: Direct COPY TO
+        if (append) {
+            stop("'append = TRUE' requires hive-partitioned output ",
+                 "(length(grid) > 1L)")
+        }
         .writeDuckDBArraySingle(x,
                                 path = path,
                                 indexcols = indexcols,
@@ -408,9 +435,6 @@ function(x,
                                 arrowtype = arrowtype,
                                 ...)
     } else {
-        # Multi-partition write: Use DuckDB's native PARTITION_BY
-        # This creates a single COPY TO statement that DuckDB executes with
-        # internal parallelism, automatically creating Hive-style directories
         .writeDuckDBArrayPartitionedWithPartitionBy(x,
                                                     path = path,
                                                     indexcols = indexcols,
@@ -419,6 +443,9 @@ function(x,
                                                     grid_suffix = grid_suffix,
                                                     idxtypes = idxtypes,
                                                     arrowtype = arrowtype,
+                                                    along = along,
+                                                    offset = offset,
+                                                    group_offset = group_offset,
                                                     ...)
     }
 
