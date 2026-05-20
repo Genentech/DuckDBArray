@@ -82,6 +82,56 @@ function(max_dim, x, append, along, offset, ndim)
     max_dim
 }
 
+# Shared preamble for writeCoordArray methods: unique column names,
+# append validation, max_dim validation, and CoordSchema preparation.
+.setupCoordWrite <-
+function(x, path, indexcols, datacol, grid, grid_suffix,
+         arrowtype, max_dim, append, along, offset, group_offset,
+         infer_value = TRUE, BPPARAM = NULL)
+{
+    if (is.null(dim(x))) {
+        stop("the default method of writeCoordArray requires 'x' to be array-like")
+    }
+    if (inherits(x, "table")) {
+        x <- unclass(x)
+    }
+    ndim <- length(dim(x))
+
+    unique_names <- make.unique(c(indexcols, datacol), sep = "_")
+    indexcols <- head(unique_names, -1L)
+    datacol <- tail(unique_names, 1L)
+
+    .validateArrowtype(arrowtype)
+
+    ap <- .validateAppend(append, grid, along, offset, group_offset,
+                          path, ndim)
+    along <- ap$along
+    offset <- ap$offset
+    group_offset <- ap$group_offset
+
+    max_dim <- .validateMaxDim(max_dim, x, append, along, offset, ndim)
+
+    schema <- .prepareCoordSchema(
+        x, indexcols, datacol, arrowtype, max_dim,
+        append, along, offset, path, grid, BPPARAM,
+        infer_value = infer_value
+    )
+
+    if (append) {
+        checkHiveAppendPartitions(path = path, indexcols = indexcols,
+                                  grid_suffix = grid_suffix, grid = grid,
+                                  along = along, group_offset = group_offset)
+    }
+
+    list(x = x,
+         indexcols = indexcols,
+         datacol = datacol,
+         schema = schema,
+         along = along,
+         offset = offset,
+         group_offset = group_offset)
+}
+
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Public API
 ###
@@ -261,77 +311,29 @@ function(x,
          BPPARAM = getAutoBPPARAM(),
          ...)
 {
-    # Input normalization
-    if (is.null(dim(x))) {
-        stop("the default method of writeCoordArray requires 'x' to be array-like")
-    }
-    if (inherits(x, "table")) {
-        x <- unclass(x)
-    }
-    ndim <- length(dim(x))
+    prep <- .setupCoordWrite(x, path, indexcols, datacol, grid, grid_suffix,
+                             arrowtype, max_dim, append, along, offset,
+                             group_offset, infer_value = TRUE,
+                             BPPARAM = BPPARAM)
+    x <- prep$x
+    indexcols <- prep$indexcols
+    datacol <- prep$datacol
+    schema <- prep$schema
+    along <- prep$along
+    offset <- prep$offset
+    group_offset <- prep$group_offset
 
-    # 'indexcols'/'datacol' are deduplicated up front because every
-    # downstream step (hive-layout checks, schema I/O, file writing)
-    # relies on the post-make.unique names.
-    unique_names <- make.unique(c(indexcols, datacol), sep = "_")
-    indexcols <- head(unique_names, -1L)
-    datacol <- tail(unique_names, 1L)
-
-    # Argument validation
-    .validateArrowtype(arrowtype)
-
-    ap <- .validateAppend(append, grid, along, offset, group_offset,
-                          path, ndim)
-    along <- ap$along
-    offset <- ap$offset
-    group_offset <- ap$group_offset
-
-    max_dim <- .validateMaxDim(max_dim, x, append, along, offset, ndim)
-
-    # Index-column arrow types
-    #
-    # 'idxtypes' is the single source of truth for index-column arrow
-    # types and is threaded into every cell write so partitions cannot
-    # drift from one another.
-    idxtypes <- .computeIdxtypes(dim(x), max_dim, append, along, offset)
-
-    # Append pre-flight
-    #
-    # Everything here runs before any file is written so a failed check
-    # leaves the existing dataset byte-for-byte unchanged. When the
-    # caller did not pin 'arrowtype' / 'max_dim', we adopt the existing
-    # dataset's types so the appended slab cannot drift.
-    if (append) {
-        reconciled <- .reconcileAppendSchema(path, indexcols, datacol,
-                                             arrowtype, max_dim, idxtypes)
-        arrowtype <- reconciled$arrowtype
-        idxtypes <- reconciled$idxtypes
-
-        checkHiveAppendPartitions(path = path, indexcols = indexcols,
-                                   grid_suffix = grid_suffix, grid = grid,
-                                   along = along, group_offset = group_offset)
-    }
-
-    # Value-column type inference (non-append only)
-    if (!append && is.null(arrowtype)) {
-        arrowtype <- .inferValueType(x, grid, BPPARAM)
-    }
-
-    # Write
     dimnames(x) <- lapply(dim(x), function(d) as.character(seq_len(d)))
 
     if (length(grid) == 1L) {
-        # append precluded above (requires length(grid) > 1L).
         .writeCoordArray(x, path = path, indexcols = indexcols,
-                         datacol = datacol, idxtypes = idxtypes,
-                         arrowtype = arrowtype, ...)
+                         datacol = datacol, schema = schema, ...)
     } else {
         blockApply(x, FUN = .writeCellFUN,
                    path = path,
                    indexcols = indexcols,
                    datacol = datacol,
-                   idxtypes = idxtypes,
-                   arrowtype = arrowtype,
+                   schema = schema,
                    grid_suffix = grid_suffix,
                    along = along,
                    offset = offset,
@@ -350,7 +352,7 @@ function(x,
 #' @importFrom DBI dbGetQuery
 #' @importFrom dbplyr sql_render
 #' @importFrom DuckDBArray dbconn tblconn
-#' @importFrom DuckDBDataFrame checkHiveAppendPartitions
+#' @importFrom DuckDBDataFrame arrowTypeToName checkHiveAppendPartitions
 #' @rdname writeCoordArray
 setMethod("writeCoordArray", "DuckDBArray",
 function(x,
@@ -376,52 +378,44 @@ function(x,
     seed <- x@seed
     conn <- dbconn(seed)
     tbl <- tblconn(seed)
-    ndim <- length(dim(x))
 
     # Auto-detect indexcols from table keycols if not provided
     if (is.null(indexcols)) {
         indexcols <- names(seed@table@keycols)
     }
 
-    # Make column names unique
-    unique_names <- make.unique(c(indexcols, datacol), sep = "_")
-    indexcols <- head(unique_names, -1L)
-    datacol <- tail(unique_names, 1L)
+    prep <- .setupCoordWrite(x, path, indexcols, datacol, grid, grid_suffix,
+                             arrowtype, max_dim, append, along, offset,
+                             group_offset, infer_value = FALSE,
+                             BPPARAM = NULL)
+    indexcols <- prep$indexcols
+    datacol <- prep$datacol
+    schema <- prep$schema
+    along <- prep$along
+    offset <- prep$offset
+    group_offset <- prep$group_offset
 
-    .validateArrowtype(arrowtype)
-
-    ap <- .validateAppend(append, grid, along, offset, group_offset,
-                          path, ndim)
-    along <- ap$along
-    offset <- ap$offset
-    group_offset <- ap$group_offset
-
-    max_dim <- .validateMaxDim(max_dim, x, append, along, offset, ndim)
-    idxtypes <- .computeIdxtypes(dim(x), max_dim, append, along, offset)
-
-    if (append) {
-        reconciled <- .reconcileAppendSchema(path, indexcols, datacol,
-                                             arrowtype, max_dim, idxtypes)
-        arrowtype <- reconciled$arrowtype
-        idxtypes <- reconciled$idxtypes
-        checkHiveAppendPartitions(path = path, indexcols = indexcols,
-                                   grid_suffix = grid_suffix, grid = grid,
-                                   along = along, group_offset = group_offset)
-    } else {
-        # Extract arrow types from DuckDB schema when not appending
+    if (!append) {
         schema_probe <- dbGetQuery(conn, sprintf(
             "SELECT * FROM (%s) LIMIT 0",
             sql_render(tbl)
         ))
         if (is.null(arrowtype)) {
-            arrowtype <- .duckdbTypeToArrow(class(schema_probe[[datacol]])[1L])
+            schema$value <- arrowTypeToName(
+                .duckdbTypeToArrow(class(schema_probe[[datacol]])[1L])
+            )
         }
         if (is.null(max_dim)) {
-            idxtypes <- lapply(indexcols, function(col) {
-                .duckdbTypeToArrow(class(schema_probe[[col]])[1L])
-            })
+            schema$index <- vapply(indexcols, function(col) {
+                arrowTypeToName(
+                    .duckdbTypeToArrow(class(schema_probe[[col]])[1L])
+                )
+            }, character(1L))
+            names(schema$index) <- indexcols
         }
     }
+
+    schema_arrow <- .coordSchemaArrowTypes(schema)
 
     if (length(grid) == 1L) {
         if (append) {
@@ -432,7 +426,7 @@ function(x,
                                 path = path,
                                 indexcols = indexcols,
                                 datacol = datacol,
-                                arrowtype = arrowtype,
+                                arrowtype = schema_arrow$value,
                                 ...)
     } else {
         .writeDuckDBArrayPartitionedWithPartitionBy(x,
@@ -441,8 +435,8 @@ function(x,
                                                     datacol = datacol,
                                                     grid = grid,
                                                     grid_suffix = grid_suffix,
-                                                    idxtypes = idxtypes,
-                                                    arrowtype = arrowtype,
+                                                    idxtypes = schema_arrow$index,
+                                                    arrowtype = schema_arrow$value,
                                                     along = along,
                                                     offset = offset,
                                                     group_offset = group_offset,

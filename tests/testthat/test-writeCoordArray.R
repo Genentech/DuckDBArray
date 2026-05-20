@@ -386,7 +386,7 @@ test_that("append rejects mismatched 'max_dim' and keeps existing data intact", 
                         offset = ncol(ctx$slab),
                         group_offset = dim(ctx$grid)[2L],
                         max_dim = c(50L, 8L)),
-        "schema mismatch on column 'index1'"
+        "schema mismatch on 'index1'"
     )
 
     after <- .datasetFingerprint(ctx$path)

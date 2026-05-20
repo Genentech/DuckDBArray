@@ -9,9 +9,9 @@
 # partition subdirectory, and hands the block to .writeCoordArray.
 #' @importFrom DelayedArray currentViewport effectiveGrid
 #' @importFrom S4Arrays mapToGrid
-.writeCellFUN <- function(x, path, indexcols, datacol, grid_suffix,
-                          idxtypes, arrowtype, along, offset,
-                          group_offset, ...)
+.writeCellFUN <-
+function(x, path, indexcols, datacol, grid_suffix, schema, along, offset,
+         group_offset, ...)
 {
     grid <- effectiveGrid()
     viewport <- currentViewport()
@@ -25,9 +25,8 @@
     path <- do.call(file.path, c(list(path), subdir))
 
     .writeCoordArray(x, path = path, indexcols = indexcols,
-                     datacol = datacol, idxtypes = idxtypes,
-                     arrowtype = arrowtype, along = along,
-                     offset = offset, ...)
+                     datacol = datacol, schema = schema,
+                     along = along, offset = offset, ...)
 }
 
 # Write a single coordinate-format block to 'path'. Every call writes
@@ -36,11 +35,10 @@
 # of a multi-cell write and every successive append share an identical
 # schema.
 .writeCoordArray <-
-function(x, path, indexcols, datacol, idxtypes, arrowtype = NULL,
-         along = NULL, offset = 0L, ...)
+function(x, path, indexcols, datacol, schema, along = NULL, offset = 0L, ...)
 {
     coords_df <- .extractSparseCoordinates(x, indexcols, datacol, along, offset)
-    .writeArrowDataset(coords_df, path, indexcols, datacol, idxtypes, arrowtype, ...)
+    .writeArrowDataset(coords_df, path, indexcols, datacol, schema, ...)
     invisible(NULL)
 }
 
@@ -72,13 +70,10 @@ function(x, indexcols, datacol, along = NULL, offset = 0L)
 # routing to either empty or non-empty write path.
 #' @importFrom arrow Array
 .writeArrowDataset <-
-function(coords_df, path, indexcols, datacol, idxtypes, arrowtype = NULL, ...)
+function(coords_df, path, indexcols, datacol, schema, ...)
 {
-    # Coerce index columns to their caller-pinned arrow types. If any
-    # coordinate overflows the chosen unsigned type (which shouldn't
-    # happen when upstream validation is correct), arrow::Array$create
-    # throws loudly -- that's the last line of defense against silently
-    # writing wrong coordinates.
+    idxtypes <- .resolveArrowTypeList(schema$index)
+    arrowtype <- .resolveArrowType(schema$value)
     for (j in seq_along(indexcols)) {
         coords_df[[j]] <- Array$create(coords_df[[j]], type = idxtypes[[j]])
     }
