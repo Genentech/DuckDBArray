@@ -8,39 +8,22 @@
 ### SQL generation utilities
 ###
 
-### Quote SQL column names
-#' @importFrom DBI dbQuoteIdentifier
-.quoteColumns <-
-function(conn, cols)
-{
-    vapply(cols, function(col) {
-        as.character(dbQuoteIdentifier(conn, col))
-    }, character(1L), USE.NAMES = FALSE)
-}
-
 ### Build COPY TO SQL with optional remapping
 #' @importFrom dbplyr sql_render
+#' @importFrom DuckDBDataFrame buildParquetCopySQL quoteSQLColumns
 .buildCopyToSQL <-
 function(tbl, indexcols, datacol, target_path, where_clause = NULL,
          mapping_tables = NULL, grid_group = NULL, partition_by = NULL, grid_suffix = "_group")
 {
-    # Extract connection from tbl
     conn <- tbl$src$con
-
-    # Determine if we should include grid groups for partitioning
     include_grid_groups <- !is.null(partition_by) && partition_by
 
-    # Build SELECT clause and JOINs for remapped indices
     if (!is.null(mapping_tables)) {
         join_clauses <- .buildRemappingJoins(mapping_tables, indexcols, grid_group, conn)
         select_parts <- .buildRemappingSelect(indexcols, datacol, conn,
                                               include_grid_groups = include_grid_groups,
                                               grid_suffix = grid_suffix)
-
-        # Order by remapped (new) indices in column-major order
         order_cols <- rev(sprintf("m%d.new_idx", seq_along(indexcols)))
-
-        # Build query
         base_query <- sprintf(
             "SELECT %s FROM (%s) t %s",
             paste(select_parts, collapse = ", "),
@@ -48,9 +31,8 @@ function(tbl, indexcols, datacol, target_path, where_clause = NULL,
             paste(join_clauses, collapse = " ")
         )
     } else {
-        # No remapping: original behavior
-        quoted_cols <- .quoteColumns(conn, c(indexcols, datacol))
-        order_cols <- .quoteColumns(conn, rev(indexcols))
+        quoted_cols <- quoteSQLColumns(conn, c(indexcols, datacol))
+        order_cols <- quoteSQLColumns(conn, rev(indexcols))
         base_query <- sprintf(
             "SELECT %s FROM (%s)",
             paste(quoted_cols, collapse = ", "),
@@ -58,29 +40,21 @@ function(tbl, indexcols, datacol, target_path, where_clause = NULL,
         )
     }
 
-    # Add WHERE clause if provided
     if (!is.null(where_clause) && nzchar(where_clause)) {
         base_query <- sprintf("%s WHERE %s", base_query, where_clause)
     }
 
-    # Build PARTITION_BY clause if requested
-    partition_clause <- ""
-    if (partition_by) {
-        partition_cols <- paste0(indexcols, grid_suffix)
-        partition_cols_quoted <- .quoteColumns(conn, partition_cols)
-        partition_clause <- sprintf(", PARTITION_BY (%s)", paste(partition_cols_quoted, collapse = ", "))
+    partition_cols <- if (include_grid_groups) {
+        quoteSQLColumns(conn, paste0(indexcols, grid_suffix))
+    } else {
+        NULL
     }
 
-    # Add ORDER BY and COPY TO with optional PARTITION_BY
-    copy_sql <- sprintf(
-        "COPY (%s ORDER BY %s) TO '%s' (FORMAT 'parquet'%s, COMPRESSION 'zstd', ROW_GROUP_SIZE 491520, COMPRESSION_LEVEL 3)",
-        base_query,
-        paste(order_cols, collapse = ", "),
-        target_path,
-        partition_clause
-    )
-
-    copy_sql
+    buildParquetCopySQL(
+        base_query, target_path,
+        order_cols = order_cols,
+        partition_by = partition_cols,
+        row_group_size = 491520L)
 }
 
 ### Build remapping JOIN clauses
@@ -113,8 +87,9 @@ function(tbl, indexcols, datacol, target_path, where_clause = NULL,
 
 ### Build remapping SELECT clause
 #' @importFrom DBI dbQuoteIdentifier
+#' @importFrom DuckDBDataFrame quoteSQLColumns
 .buildRemappingSelect <- function(indexcols, datacol, conn, include_grid_groups = FALSE, grid_suffix = "_group") {
-    quoted_datacol <- .quoteColumns(conn, datacol)
+    quoted_datacol <- quoteSQLColumns(conn, datacol)
 
     if (include_grid_groups) {
         # Include grid_group columns for PARTITION_BY
