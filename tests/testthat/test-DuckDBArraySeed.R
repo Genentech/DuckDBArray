@@ -167,6 +167,27 @@ test_that("Logic methods work as expected for a DuckDBArraySeed", {
     checkDuckDBArraySeed(!x, !as.array(x))
 })
 
+test_that("show method works for DuckDBArraySeed", {
+    seed <- DuckDBArraySeed(titanic_parquet, datacol = "fate",
+                            keycols = dimnames(titanic_array))
+    expect_output(show(seed), "DuckDBArraySeed")
+    expect_output(show(seed), "sparse")
+})
+
+test_that("aperm and t validate their arguments for DuckDBArraySeed", {
+    seed <- DuckDBArraySeed(titanic_parquet, datacol = "fate",
+                            keycols = dimnames(titanic_array))
+    expect_error(aperm(seed, 1:3), "'perm' must be a permutation")
+    expect_error(t(seed), "2-dimensional")
+})
+
+test_that("sweep rejects non-zero-filled DuckDBArraySeed", {
+    seed <- DuckDBArraySeed(titanic_parquet, datacol = "fate",
+                            keycols = dimnames(titanic_array))
+    seed@fill <- 1L
+    expect_error(sweep(seed, 1L, 1:4, "/"), "zero-filled")
+})
+
 test_that("Math methods work as expected for a DuckDBArraySeed", {
     names(dimnames(state.x77)) <- c("index1", "index2")
     seed <- DuckDBArraySeed(state_path, datacol = "value",

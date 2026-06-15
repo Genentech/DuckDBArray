@@ -278,6 +278,45 @@ test_that("matrix multiplication works for DuckDBMatrix", {
     checkDuckDBMatrix(object, expected)
 })
 
+test_that("matrix-matrix multiplication works for DuckDBMatrix", {
+    names(dimnames(state.x77)) <- c("index1", "index2")
+    pqmat <- DuckDBMatrix(state_path, datacol = "value",
+                          keycols = lapply(dimnames(state.x77),
+                                           function(x) setNames(seq_along(x), x)))
+
+    B <- matrix(seq_len(ncol(pqmat) * 2L), nrow = ncol(pqmat), ncol = 2L)
+    expect_equal(as.matrix(pqmat %*% B), state.x77 %*% B, check.attributes = FALSE)
+
+    A <- matrix(seq_len(nrow(pqmat) * 3L), nrow = 3L, ncol = nrow(pqmat))
+    expect_equal(as.matrix(A %*% pqmat), A %*% state.x77, check.attributes = FALSE)
+
+    Y2 <- matrix(seq_len(nrow(pqmat) * 2L), nrow = nrow(pqmat), ncol = 2L)
+    expect_equal(as.matrix(crossprod(pqmat, Y2)), crossprod(state.x77, Y2),
+                 check.attributes = FALSE)
+
+    A2 <- matrix(seq_len(nrow(pqmat) * 3L), nrow = nrow(pqmat), ncol = 3L)
+    expect_equal(as.matrix(crossprod(A2, pqmat)), crossprod(A2, state.x77),
+                 check.attributes = FALSE)
+
+    Y <- matrix(seq_len(ncol(pqmat) * 2L), nrow = 2L, ncol = ncol(pqmat))
+    expect_equal(as.matrix(tcrossprod(pqmat, Y)), tcrossprod(state.x77, Y),
+                 check.attributes = FALSE)
+
+    rowmat <- pqmat[1L, , drop = FALSE]
+    x <- seq_len(nrow(pqmat))
+    expect_equal(as.matrix(tcrossprod(x, rowmat)), outer(x, as.vector(state.x77[1L, ])),
+                 check.attributes = FALSE)
+})
+
+test_that("matrix multiplication errors on non-conformable operands", {
+    names(dimnames(state.x77)) <- c("index1", "index2")
+    pqmat <- DuckDBMatrix(state_path, datacol = "value",
+                          keycols = lapply(dimnames(state.x77),
+                                           function(x) setNames(seq_along(x), x)))
+    expect_error(pqmat %*% rep(1, ncol(pqmat) + 1L), "non-conformable")
+    expect_error(rep(1, nrow(pqmat) + 1L) %*% pqmat, "non-conformable")
+})
+
 test_that("rowDeviances works on airway counts DuckDBMatrix", {
     names(dimnames(airway_counts)) <- c("index1", "index2")
     pqmat <- DuckDBMatrix(airway_counts_path, datacol = "value",

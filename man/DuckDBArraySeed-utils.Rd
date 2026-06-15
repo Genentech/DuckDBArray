@@ -16,6 +16,9 @@
 \alias{nzcount,DuckDBArraySeed-method}
 \alias{is_sparse,DuckDBArraySeed-method}
 \title{Common operations on DuckDBArraySeed objects}
+\value{
+Method return types are documented in the sections above.
+}
 \description{
 Common operations on \linkS4class{DuckDBArraySeed} objects.
 }
@@ -90,6 +93,20 @@ In the code snippets below, \code{x} is a DuckDBArraySeed object:
 }
 }
 
+\examples{
+df <- do.call(expand.grid, c(dimnames(Titanic), stringsAsFactors = FALSE))
+df$fate <- as.integer(Titanic[as.matrix(df)])
+df <- df[df$fate != 0L, ]
+tf <- tempfile(fileext = ".parquet")
+on.exit(unlink(tf))
+arrow::write_parquet(df, tf)
+seed <- DuckDBArray(tf, datacol = "fate",
+                    keycols = c("Class", "Sex", "Age", "Survived"))@seed
+is_sparse(seed)
+nzcount(seed)
+seed + 1L
+
+}
 \seealso{
 \itemize{
   \item \code{\link{DuckDBArraySeed-class}} for the internal seed class

@@ -18,6 +18,9 @@
 \alias{colVars,DuckDBTable-method}
 \alias{sweep,DuckDBTable-method}
 \title{DuckDBTable row / column summarization methods}
+\value{
+Method return types are documented in the sections above.
+}
 \description{
 Row / column summarization methods for \linkS4class{DuckDBTable} objects.
 }
@@ -111,6 +114,19 @@ In the code snippets below, \code{x} is a DuckDBTable object:
 }
 }
 
+\examples{
+df <- do.call(expand.grid, c(dimnames(Titanic), stringsAsFactors = FALSE))
+df$fate <- as.integer(Titanic[as.matrix(df)])
+df <- df[df$fate != 0L, ]
+tf <- tempfile(fileext = ".parquet")
+on.exit(unlink(tf))
+arrow::write_parquet(df, tf)
+tbl <- DuckDBArray(tf, datacol = "fate",
+                   keycols = c("Class", "Sex", "Age", "Survived"))@seed@table
+rowSums(tbl)
+colMeans(tbl)
+
+}
 \seealso{
 \itemize{
   \item \code{\link{DuckDBTable-class}} for the main class

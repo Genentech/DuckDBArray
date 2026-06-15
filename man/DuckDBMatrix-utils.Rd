@@ -11,6 +11,9 @@
 \alias{tcrossprod,DuckDBMatrix,numeric-method}
 \alias{tcrossprod,numeric,DuckDBMatrix-method}
 \title{DuckDBMatrix utility methods}
+\value{
+Method return types are documented in the sections above.
+}
 \description{
 Matrix multiplication methods for \linkS4class{DuckDBMatrix} objects.
 }
@@ -37,6 +40,24 @@ is an ordinary matrix or vector:
 }
 }
 
+\examples{
+state_df <- data.frame(
+  index1 = rep(rownames(state.x77), times = ncol(state.x77)),
+  index2 = rep(colnames(state.x77), each = nrow(state.x77)),
+  value = as.vector(state.x77)
+)
+state_df <- subset(state_df, value != 0)
+tf <- tempfile(fileext = ".parquet")
+on.exit(unlink(tf))
+arrow::write_parquet(state_df, tf)
+pqmat <- DuckDBMatrix(tf, datacol = "value",
+                      keycols = list(index1 = rownames(state.x77),
+                                     index2 = colnames(state.x77)))
+y <- rep(1, ncol(pqmat))
+pqmat \%*\% y
+dim(crossprod(pqmat))
+
+}
 \seealso{
 \itemize{
   \item \code{\link{DuckDBMatrix-class}} for the main class

@@ -16,6 +16,9 @@
 \alias{nzcount,DuckDBArray-method}
 \alias{nzvals,DuckDBArray-method}
 \title{Common operations on DuckDBArray objects}
+\value{
+Method return types are documented in the sections above.
+}
 \description{
 Common operations on \linkS4class{DuckDBArray} objects.
 }
@@ -93,6 +96,20 @@ In the code snippets below, \code{x} is a DuckDBArray object:
 }
 }
 
+\examples{
+df <- do.call(expand.grid, c(dimnames(Titanic), stringsAsFactors = FALSE))
+df$fate <- as.integer(Titanic[as.matrix(df)])
+df <- df[df$fate != 0L, ]
+tf <- tempfile(fileext = ".parquet")
+on.exit(unlink(tf))
+arrow::write_parquet(df, tf)
+pqarray <- DuckDBArray(tf, datacol = "fate",
+                       keycols = c("Class", "Sex", "Age", "Survived"))
+is_sparse(pqarray)
+rowSums(pqarray)
+pqarray + 1L
+
+}
 \seealso{
 \itemize{
   \item \code{\link{DuckDBArray-class}} for the main class

@@ -89,6 +89,9 @@
 #'   }
 #' }
 #'
+#' @return
+#' Method return types are documented in the sections above.
+#'
 #' @author Patrick Aboyoun
 #'
 #' @seealso
@@ -114,6 +117,18 @@
 #' @aliases sweep,DuckDBTable-method
 #'
 #' @keywords utilities methods
+#'
+#' @examples
+#' df <- do.call(expand.grid, c(dimnames(Titanic), stringsAsFactors = FALSE))
+#' df$fate <- as.integer(Titanic[as.matrix(df)])
+#' df <- df[df$fate != 0L, ]
+#' tf <- tempfile(fileext = ".parquet")
+#' on.exit(unlink(tf))
+#' arrow::write_parquet(df, tf)
+#' tbl <- DuckDBArray(tf, datacol = "fate",
+#'                    keycols = c("Class", "Sex", "Age", "Survived"))@seed@table
+#' rowSums(tbl)
+#' colMeans(tbl)
 #'
 #' @name DuckDBTable-matrixStats
 NULL

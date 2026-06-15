@@ -17,6 +17,9 @@
 \alias{rowVars,DuckDBArraySeed-method}
 \alias{colVars,DuckDBArraySeed-method}
 \title{DuckDBArraySeed row / column summarization methods}
+\value{
+Method return types are documented in the sections above.
+}
 \description{
 Row / column summarization methods for \linkS4class{DuckDBArraySeed} objects.
 }
@@ -91,6 +94,19 @@ In the code snippets below, \code{x} is a DuckDBArraySeed object:
 }
 }
 
+\examples{
+df <- do.call(expand.grid, c(dimnames(Titanic), stringsAsFactors = FALSE))
+df$fate <- as.integer(Titanic[as.matrix(df)])
+df <- df[df$fate != 0L, ]
+tf <- tempfile(fileext = ".parquet")
+on.exit(unlink(tf))
+arrow::write_parquet(df, tf)
+seed <- DuckDBArray(tf, datacol = "fate",
+                    keycols = c("Class", "Sex", "Age", "Survived"))@seed
+colMeans(seed)
+rowSums(seed, dims = 2L)
+
+}
 \seealso{
 \itemize{
   \item \code{\link{DuckDBArraySeed-class}} for the internal seed class

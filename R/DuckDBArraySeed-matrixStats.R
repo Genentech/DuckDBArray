@@ -72,6 +72,9 @@
 #'   }
 #' }
 #'
+#' @return
+#' Method return types are documented in the sections above.
+#'
 #' @author Patrick Aboyoun
 #'
 #' @aliases rowCounts,DuckDBArraySeed-method
@@ -101,6 +104,18 @@
 #' @include DuckDBTable-matrixStats.R
 #'
 #' @keywords utilities methods
+#'
+#' @examples
+#' df <- do.call(expand.grid, c(dimnames(Titanic), stringsAsFactors = FALSE))
+#' df$fate <- as.integer(Titanic[as.matrix(df)])
+#' df <- df[df$fate != 0L, ]
+#' tf <- tempfile(fileext = ".parquet")
+#' on.exit(unlink(tf))
+#' arrow::write_parquet(df, tf)
+#' seed <- DuckDBArray(tf, datacol = "fate",
+#'                     keycols = c("Class", "Sex", "Age", "Survived"))@seed
+#' colMeans(seed)
+#' rowSums(seed, dims = 2L)
 #'
 #' @name DuckDBArraySeed-matrixStats
 NULL

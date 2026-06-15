@@ -71,6 +71,9 @@
 #'   }
 #' }
 #'
+#' @return
+#' Method return types are documented in the sections above.
+#'
 #' @author Patrick Aboyoun
 #'
 #' @aliases Ops,DuckDBArray,DuckDBArray-method
@@ -102,6 +105,19 @@
 #' @include DuckDBArray-class.R
 #'
 #' @keywords utilities methods
+#'
+#' @examples
+#' df <- do.call(expand.grid, c(dimnames(Titanic), stringsAsFactors = FALSE))
+#' df$fate <- as.integer(Titanic[as.matrix(df)])
+#' df <- df[df$fate != 0L, ]
+#' tf <- tempfile(fileext = ".parquet")
+#' on.exit(unlink(tf))
+#' arrow::write_parquet(df, tf)
+#' pqarray <- DuckDBArray(tf, datacol = "fate",
+#'                        keycols = c("Class", "Sex", "Age", "Survived"))
+#' is_sparse(pqarray)
+#' rowSums(pqarray)
+#' pqarray + 1L
 #'
 #' @name DuckDBArray-utils
 NULL

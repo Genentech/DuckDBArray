@@ -24,6 +24,9 @@
 #'   }
 #' }
 #'
+#' @return
+#' Method return types are documented in the sections above.
+#'
 #' @author Patrick Aboyoun
 #'
 #' @seealso
@@ -44,6 +47,23 @@
 #' @include DuckDBMatrix-class.R
 #'
 #' @keywords utilities methods
+#'
+#' @examples
+#' state_df <- data.frame(
+#'   index1 = rep(rownames(state.x77), times = ncol(state.x77)),
+#'   index2 = rep(colnames(state.x77), each = nrow(state.x77)),
+#'   value = as.vector(state.x77)
+#' )
+#' state_df <- subset(state_df, value != 0)
+#' tf <- tempfile(fileext = ".parquet")
+#' on.exit(unlink(tf))
+#' arrow::write_parquet(state_df, tf)
+#' pqmat <- DuckDBMatrix(tf, datacol = "value",
+#'                       keycols = list(index1 = rownames(state.x77),
+#'                                      index2 = colnames(state.x77)))
+#' y <- rep(1, ncol(pqmat))
+#' pqmat %*% y
+#' dim(crossprod(pqmat))
 #'
 #' @name DuckDBMatrix-utils
 NULL

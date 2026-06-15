@@ -422,6 +422,29 @@ test_that("row/colMaxs methods work as expected for a DuckDBArray", {
     expect_equal(setNames(as.vector(object), names(object)), expected)
 })
 
+test_that("DuckDBArray accessors delegate to the seed", {
+    names(dimnames(state.x77)) <- c("index1", "index2")
+    ref <- DuckDBArray(state_path, datacol = "value",
+                       keycols = lapply(dimnames(state.x77),
+                                        function(x) setNames(seq_along(x), x)),
+                       dimtbls = state_tables)
+    pqarray <- DuckDBArray(state_path, datacol = "value",
+                           keycols = lapply(dimnames(state.x77),
+                                            function(x) setNames(seq_along(x), x)))
+    expect_output(show(pqarray), "DuckDBArray")
+    type(pqarray) <- "double"
+    expect_identical(type(pqarray), "double")
+    dimtbls(pqarray) <- dimtbls(ref, drop = FALSE)
+    expect_identical(dimtbls(pqarray, drop = FALSE), dimtbls(ref, drop = FALSE))
+})
+
+test_that("DuckDBArray constructor accepts a DuckDBArraySeed", {
+    seed <- DuckDBArraySeed(titanic_parquet, datacol = "fate",
+                            keycols = dimnames(titanic_array))
+    pqarray <- DuckDBArray(seed)
+    checkDuckDBArray(pqarray, titanic_array)
+})
+
 test_that("row/colMeans methods work as expected for a DuckDBArray", {
     pqarray <- DuckDBArray(titanic_parquet, datacol = "fate", keycols = dimnames(titanic_array))
 

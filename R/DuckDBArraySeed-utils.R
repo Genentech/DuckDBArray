@@ -68,6 +68,9 @@
 #'   }
 #' }
 #'
+#' @return
+#' Method return types are documented in the sections above.
+#'
 #' @author Patrick Aboyoun
 #'
 #' @aliases Ops,DuckDBArraySeed,DuckDBArraySeed-method
@@ -97,6 +100,19 @@
 #' @include DuckDBArraySeed-class.R
 #'
 #' @keywords utilities methods
+#'
+#' @examples
+#' df <- do.call(expand.grid, c(dimnames(Titanic), stringsAsFactors = FALSE))
+#' df$fate <- as.integer(Titanic[as.matrix(df)])
+#' df <- df[df$fate != 0L, ]
+#' tf <- tempfile(fileext = ".parquet")
+#' on.exit(unlink(tf))
+#' arrow::write_parquet(df, tf)
+#' seed <- DuckDBArray(tf, datacol = "fate",
+#'                     keycols = c("Class", "Sex", "Age", "Survived"))@seed
+#' is_sparse(seed)
+#' nzcount(seed)
+#' seed + 1L
 #'
 #' @name DuckDBArraySeed-utils
 NULL
