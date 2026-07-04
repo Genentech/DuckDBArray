@@ -1,0 +1,13 @@
+---
+# DuckDBArray CI — MODL shared R-check (base template). Its intra-suite dependency
+# (DuckDBDataFrame) resolves from Kite at check time, so no cloning is needed for release CI.
+# See modl/modl-ci. (For dev-integration against an UNPUBLISHED DuckDBDataFrame HEAD, switch
+# to .modl_r_check_with_deps and set MODL_R_INTERNAL_DEPS.)
+
+include:
+  - project: 'modl/modl-ci'
+    ref: main
+    file: 'r-check.yml'
+
+check:
+  extends: .modl_r_check
