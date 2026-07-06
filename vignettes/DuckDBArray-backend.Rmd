@@ -1,0 +1,194 @@
+---
+title: "Implementing the DuckDBArray backend"
+author:
+- name: Patrick Aboyoun
+  email: aboyounp@gene.com
+  affiliation: Genentech, Inc.
+date: "Compiled: `r BiocStyle::doc_date()`; Modified: 6 July 2026"
+package: DuckDBArray
+vignette: >
+  %\VignetteIndexEntry{3. Implementing the DuckDBArray backend}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+output:
+  BiocStyle::html_document:
+    number_sections: true
+    toc: true
+    toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+library(BiocStyle)
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      error = FALSE, warning = FALSE, message = FALSE)
+```
+
+# Scope
+
+This vignette is for developers: it documents *how* the DuckDB backend satisfies
+the `r Biocpkg("DelayedArray")` seed contract and how array operations become SQL,
+so you can maintain the package, extend it, or implement a similar backend. For
+day-to-day use see *Introduction to DuckDBArray*; for performance see
+*Benchmarking DuckDBArray*.
+
+The design follows the pattern DelayedArray prescribes for backends (see its
+*Implementing a DelayedArray backend* vignette): a lightweight **seed** class that
+knows how to read blocks of data, wrapped by the standard `DelayedArray` /
+`DelayedMatrix` classes that supply the lazy-evaluation machinery.
+
+```{r load}
+library(DuckDBArray)
+library(DelayedArray)
+```
+
+# Architecture
+
+`r Biocpkg("DuckDBArray")` layers three classes on the
+`r Biocpkg("DuckDBDataFrame")` foundation:
+
+| Class | Extends | Role |
+|-------|---------|------|
+| `DuckDBArraySeed` | `Array` | the backend seed: wraps a `DuckDBTable`, reads blocks |
+| `DuckDBArray` | `DelayedArray` | user-facing N-dimensional array |
+| `DuckDBMatrix` | `DelayedMatrix` | 2-D specialization |
+
+The seed holds no data; it holds a `DuckDBTable` (from
+`r Biocpkg("DuckDBDataFrame")`) describing a Parquet file in **coordinate (COO)**
+form --- one or more *key columns* giving each entry's position and a single
+*data column* giving its value. DelayedArray calls the seed's `extract_array()` /
+`extract_sparse_array()` methods to materialize only the blocks an operation
+needs; everything else (subsetting, arithmetic, `log1p()`, ...) is recorded lazily
+by DelayedArray and resolved against the seed on demand.
+
+# The seed contract
+
+A DelayedArray seed must answer three questions: its shape, and how to read a
+dense or a sparse block. `DuckDBArraySeed` implements all three.
+
+## Shape: `dim()` and `dimnames()`
+
+The dimensions come from the key columns: each key column is one dimension, its
+levels are that dimension's extent and names.
+
+```{r seed-dim}
+array_df <- expand.grid(i = 1:4, j = 1:3, k = 1:2)
+array_df$value <- rpois(nrow(array_df), lambda = 2)
+array_path <- tempfile(fileext = ".parquet")
+arrow::write_parquet(array_df, array_path)
+
+seed <- DuckDBArraySeed(array_path, datacol = "value",
+                        keycols = list(i = 1:4, j = 1:3, k = 1:2))
+dim(seed)
+```
+
+## Dense blocks: `extract_array()`
+
+`extract_array(seed, index)` returns an ordinary array for the requested
+`index` (a list of integer subscripts, one per dimension). Internally it subsets
+the underlying `DuckDBTable` to those positions, materializes the result with
+`as.data.frame()`, scatters the values into an array of the block's shape, and
+fills absent coordinates with the seed's `fill` value.
+
+```{r seed-extract}
+extract_array(seed, list(1:2, 1:2, 1))
+```
+
+## Sparse blocks: `extract_sparse_array()`
+
+Because the data is stored as COO, sparse extraction is natural: the seed returns
+a `COO_SparseArray` (from `r Biocpkg("SparseArray")`) built directly from the rows
+DuckDB returns, with no densification.
+
+```{r seed-sparse}
+sparse_df <- data.frame(i = c(1, 1, 2, 4), j = c(1, 3, 2, 3),
+                        k = c(1, 1, 2, 1), value = c(5, 3, 8, 7))
+sparse_path <- tempfile(fileext = ".parquet")
+arrow::write_parquet(sparse_df, sparse_path)
+sparse_seed <- DuckDBArraySeed(sparse_path, datacol = "value",
+                               keycols = list(i = 1:4, j = 1:3, k = 1:2))
+extract_sparse_array(sparse_seed, list(1:4, 1:3, 1))
+```
+
+`is_sparse()` on the seed reports whether sparse extraction is available, which is
+how DelayedArray decides to call `extract_sparse_array()` in preference to
+`extract_array()`.
+
+## Wrapping the seed
+
+`DuckDBArray()` / `DuckDBMatrix()` wrap a seed (or construct one from a path) in
+the standard DelayedArray classes:
+
+```{r wrap}
+arr <- DuckDBArray(seed)
+class(arr)
+seedClass <- class(seed(arr))
+seedClass
+```
+
+From here the full `r Biocpkg("DelayedArray")` API applies unchanged --- lazy
+arithmetic, subsetting, `blockApply()`, `realize()` --- because `DuckDBArray`
+*is* a `DelayedArray`.
+
+# From array operations to SQL
+
+The performance story rests on one idea: rather than let DelayedArray's generic
+block machinery loop over blocks, `r Biocpkg("DuckDBArray")` overrides the
+reductions so they become single SQL aggregations on the `DuckDBTable`. A
+`rowSums()` on a `DuckDBMatrix` is
+
+```sql
+SELECT <row-key>, SUM(value) FROM table GROUP BY <row-key>
+```
+
+and `rowVars()` the same with `VAR_SAMP(value)`. The `r CRANpkg("matrixStats")` /
+`r Biocpkg("MatrixGenerics")` methods (`rowSums`/`colSums`, `rowMeans`, `rowVars`,
+`rowSds`, `rowMins`/`rowMaxs`, `rowNnzs`/`colNnzs`, `rowDeviances`) are all
+implemented this way, at the `DuckDBTable` level, so DuckDB does the scan and the
+arithmetic and only the (small) per-margin result crosses back into R.
+
+```{r sql-agg}
+mat <- as(arr[, , 1], "DuckDBMatrix")
+rowSums(mat)
+```
+
+Operations without an aggregation form (element-wise math, subsetting) fall back
+to DelayedArray's lazy machinery over `extract_array()` --- correct for any
+backend, and cheap because the seed reads only the needed blocks.
+
+# Grid partitioning
+
+For large arrays, `createDimTables()` builds per-dimension lookup tables that map
+indices to grid partitions, letting DuckDB prune to just the Parquet partitions a
+query touches (and enabling independent, parallel processing of partitions).
+
+```{r dimtables}
+library(S4Arrays)
+grid <- RegularArrayGrid(dim(state.x77), c(10, 4))
+dim_tables <- createDimTables(state.x77, grid = grid)
+dim_tables
+```
+
+Dimension tables are attached to a seed via the `dimtbls=` argument (this is what
+`writeParquet()` in `r Biocpkg("BiocDuckDB")` does when it writes an experiment
+object) and read back with `dimtbls()`.
+
+# Realization and interoperability
+
+A `DuckDBArray` interoperates with the rest of the DelayedArray ecosystem: it can
+be realized to another backend or to an ordinary array, and combined in delayed
+expressions with other seeds.
+
+```{r realize}
+as.array(arr[1:2, 1:2, 1])
+```
+
+Because the on-disk representation is plain Parquet, the same files are readable
+outside R (Python, Julia, DuckDB itself, cloud query engines) --- a property the
+`r Biocpkg("BiocDuckDB")` package relies on for its language-neutral on-disk
+experiment format.
+
+# Session information
+
+```{r sessioninfo}
+sessionInfo()
+```

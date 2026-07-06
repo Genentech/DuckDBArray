@@ -97,6 +97,9 @@
 #'
 #' @author Patrick Aboyoun
 #'
+#' @return The \code{DuckDBArraySeed()} constructor returns a DuckDBArraySeed
+#' object; the accessors return the component of \code{x} named by the accessor.
+#'
 #' @examples
 #' # Create a data.frame from the Titanic data
 #' df <- do.call(expand.grid, c(dimnames(Titanic), stringsAsFactors = FALSE))

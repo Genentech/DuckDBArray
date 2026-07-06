@@ -108,8 +108,8 @@
 #' tf <- tempfile(fileext = ".parquet")
 #' on.exit(unlink(tf))
 #' arrow::write_parquet(df, tf)
-#' seed <- DuckDBArray(tf, datacol = "fate",
-#'                     keycols = c("Class", "Sex", "Age", "Survived"))@seed
+#' seed <- DuckDBArraySeed(tf, datacol = "fate",
+#'                         keycols = c("Class", "Sex", "Age", "Survived"))
 #' is_sparse(seed)
 #' nzcount(seed)
 #' seed + 1L

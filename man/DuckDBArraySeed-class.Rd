@@ -20,6 +20,10 @@
 \alias{t,DuckDBArraySeed-method}
 \alias{show,DuckDBArraySeed-method}
 \title{DuckDBArraySeed objects}
+\value{
+The \code{DuckDBArraySeed()} constructor returns a DuckDBArraySeed
+object; the accessors return the component of \code{x} named by the accessor.
+}
 \description{
 DuckDBArraySeed is a low-level helper class for representing a
 pointer to a DuckDB table.

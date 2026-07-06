@@ -95,6 +95,10 @@
 #'
 #' @author Patrick Aboyoun
 #'
+#' @return The \code{DuckDBArray()} constructor returns a DuckDBArray object.
+#' The accessors return the component of \code{x} named by the accessor (e.g.
+#' \code{dim(x)} returns an integer vector of the array dimensions).
+#'
 #' @examples
 #' # Create a data.frame from the Titanic data
 #' df <- do.call(expand.grid, c(dimnames(Titanic), stringsAsFactors = FALSE))

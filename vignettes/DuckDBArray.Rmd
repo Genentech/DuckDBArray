@@ -1,0 +1,242 @@
+---
+title: "Introduction to DuckDBArray"
+author:
+- name: Patrick Aboyoun
+  email: aboyounp@gene.com
+  affiliation: Genentech, Inc.
+date: "Compiled: `r BiocStyle::doc_date()`; Modified: 6 July 2026"
+package: DuckDBArray
+vignette: >
+  %\VignetteIndexEntry{1. Introduction to DuckDBArray}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+output:
+  BiocStyle::html_document:
+    number_sections: true
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+library(BiocStyle)
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
+                      error = FALSE, warning = FALSE, message = FALSE)
+```
+
+# Introduction
+
+Modern single-cell and genomic assays routinely produce matrices that do not fit
+in memory. The 10x Genomics 1.3 million brain cell dataset, for example, is a
+`27,998 x 1,306,127` matrix of UMI counts --- over 36 billion entries, or more
+than 130 GB as an ordinary dense integer matrix. Even stored sparsely, datasets
+like this are awkward to hold in an R session alongside the intermediate objects
+an analysis creates.
+
+`r Biocpkg("DelayedArray")` solves half of this problem: it lets an array live
+*on disk* behind the ordinary R array API, so `dim()`, `[`, `rowSums()`, and
+arithmetic all work without loading the data into memory. What remains is the
+choice of **backend** --- the on-disk representation that actually stores and
+serves the data. `r Biocpkg("HDF5Array")` provides an HDF5 backend and
+`r Biocpkg("TileDBArray")` a TileDB one.
+
+`r Biocpkg("DuckDBArray")` provides a backend built on **columnar Parquet files
+queried through [DuckDB](https://duckdb.org)**. Rather than treating a count
+matrix as a grid of blocks to be read and processed chunk by chunk, DuckDBArray
+treats it as a *database table* and lets DuckDB's SQL engine do the work: a
+`rowSums()` becomes a `SUM ... GROUP BY`, a `rowVars()` a `VAR_SAMP`, and the
+query planner handles memory and multi-threading for you. As with any
+`r Biocpkg("DelayedArray")` backend, **none of these operations load the matrix
+into memory** --- they read only what they need from disk.
+
+This vignette is a practical introduction: how to create a `DuckDBMatrix`, how
+the familiar Bioconductor array operations behave on it, and when the DuckDB
+backend is a good fit. Two companion vignettes go further:
+
+- *Benchmarking DuckDBArray* compares the backend against in-memory,
+  `r Biocpkg("HDF5Array")`, and `r Biocpkg("TileDBArray")` on real single-cell
+  data.
+- *Implementing the DuckDBArray backend* documents the seed contract and SQL
+  translation for developers extending the package.
+
+## Installation
+
+```{r install, eval=FALSE}
+if (!require("BiocManager"))
+    install.packages("BiocManager")
+BiocManager::install("DuckDBArray")
+```
+
+```{r load}
+library(DuckDBArray)
+```
+
+# Quick start
+
+A `DuckDBMatrix` is backed by a Parquet file in **coordinate (COO) form**: one
+row per stored entry, with key columns giving the position and a data column
+giving the value. For a small example we write such a file with
+`r CRANpkg("arrow")`, storing a gene-by-cell count matrix as
+`(gene, cell, count)` triples.
+
+```{r quickstart-data}
+library(arrow)
+
+counts_df <- expand.grid(gene = paste0("Gene", 1:100),
+                         cell = paste0("Cell", 1:20),
+                         stringsAsFactors = FALSE)
+set.seed(1L)
+counts_df$count <- rpois(nrow(counts_df), lambda = 3)
+
+parquet_path <- tempfile(fileext = ".parquet")
+write_parquet(counts_df, parquet_path)
+```
+
+We construct the matrix by naming the data column and the key columns that index
+each dimension. The key columns carry the dimension names and their order:
+
+```{r quickstart-construct}
+mat <- DuckDBMatrix(parquet_path,
+                    datacol = "count",
+                    keycols = list(gene = paste0("Gene", 1:100),
+                                   cell = paste0("Cell", 1:20)))
+mat
+```
+
+It looks and behaves like a matrix, but the data stays on disk:
+
+```{r quickstart-ops}
+dim(mat)
+rowSums(mat)[1:5]
+colMeans(mat)[1:5]
+```
+
+Nothing above read the whole matrix into memory: each summary is evaluated as a
+DuckDB query over the Parquet file.
+
+# Working with a DuckDBMatrix
+
+## Writing a matrix to the DuckDB backend
+
+In practice you usually start from an existing (possibly sparse) matrix. Use
+`writeCoordArray()` to serialize it to Parquet, and `createDimTables()` to build
+the dimension lookup tables that let DuckDB prune to the rows and columns a query
+touches. Storing the matrix *transposed* puts features in columns, which
+Parquet's columnar layout makes cheap to scan feature-by-feature.
+
+```{r write-matrix}
+library(Matrix)
+
+m <- Matrix(rpois(200 * 50, lambda = 1), nrow = 200, ncol = 50, sparse = TRUE)
+rownames(m) <- paste0("Gene", seq_len(nrow(m)))
+colnames(m) <- paste0("Cell", seq_len(ncol(m)))
+
+path <- tempfile()
+writeCoordArray(m, path)
+dimtbls <- createDimTables(m)
+
+mat2 <- DuckDBMatrix(path, datacol = "value",
+                     keycols = list(index1 = setNames(seq_len(nrow(m)), rownames(m)),
+                                    index2 = setNames(seq_len(ncol(m)), colnames(m))),
+                     dimtbls = dimtbls)
+dim(mat2)
+```
+
+## Subsetting
+
+Subsetting is delayed: it records the selection and is resolved only when values
+are needed.
+
+```{r subset}
+sub <- mat[1:5, 1:4]
+sub
+as.matrix(sub)
+```
+
+## Matrix statistics
+
+`r Biocpkg("DuckDBArray")` implements the `r Biocpkg("MatrixGenerics")` row/column
+summaries as SQL aggregations, so the usual functions work directly:
+
+```{r matrixstats}
+library(MatrixGenerics)
+rowSums(mat)[1:5]
+rowVars(mat)[1:5]
+colSds(mat)[1:5]
+```
+
+Two helpers are added for count-based feature selection --- `rowNnzs()` /
+`colNnzs()` count non-zero entries (detection rate), and `rowDeviances()`
+computes binomial/Poisson deviance for highly-variable-gene selection
+([Townes et al. 2019](https://doi.org/10.1186/s13059-019-1861-6)):
+
+```{r feature-selection}
+rowNnzs(mat)[1:5]
+rowDeviances(mat, family = "binomial")[1:5]
+```
+
+## Sparse data
+
+Because only stored entries live in the Parquet file, sparse matrices stay
+compact end to end. A `DuckDBMatrix` reports its sparsity and coerces to the
+familiar sparse containers when you need them in memory:
+
+```{r sparse}
+is_sparse(mat2)
+as(mat2[1:5, 1:4], "dgCMatrix")
+```
+
+## Lazy evaluation
+
+A `DuckDBMatrix` *is* a `r Biocpkg("DelayedArray")`, so delayed operations
+accumulate without touching the data, and materialize only on demand:
+
+```{r lazy}
+transformed <- log1p(mat) * 2
+class(transformed)
+as.matrix(transformed[1:3, 1:3])
+```
+
+# N-dimensional arrays
+
+The same backend serves arrays of any dimension through `DuckDBArray()`; a
+`DuckDBMatrix` is simply the two-dimensional case. Here the key columns index
+three dimensions:
+
+```{r nd-array}
+arr_df <- expand.grid(i = 1:4, j = 1:3, k = 1:2)
+arr_df$value <- rpois(nrow(arr_df), lambda = 2)
+arr_path <- tempfile(fileext = ".parquet")
+write_parquet(arr_df, arr_path)
+
+arr <- DuckDBArray(arr_path, datacol = "value",
+                   keycols = list(i = 1:4, j = 1:3, k = 1:2))
+dim(arr)
+arr[1:2, 1:2, 1]
+```
+
+# When to use DuckDBArray
+
+DuckDBArray is a good fit when:
+
+- the matrix is **larger than memory**, or you want to keep memory free for the
+  rest of the analysis;
+- the data is **sparse** (e.g. single-cell counts, scATAC-seq accessibility);
+- your workload is dominated by **columnar aggregations** --- row/column
+  summaries, grouped statistics, QC and feature selection;
+- the data already lives on disk as **Parquet**, or benefits from a format that
+  other tools (Python, Julia, cloud query engines) can read directly.
+
+Other backends remain the better choice when data fits comfortably in memory (an
+in-memory `dgCMatrix` is hard to beat for small data), or for workloads built
+around dense linear algebra or heavy random element access.
+
+For a head-to-head comparison with in-memory, `r Biocpkg("HDF5Array")`, and
+`r Biocpkg("TileDBArray")` backends --- including where each one wins --- see the
+*Benchmarking DuckDBArray* vignette. To understand or extend the backend itself,
+see *Implementing the DuckDBArray backend*.
+
+# Session information
+
+```{r sessioninfo}
+sessionInfo()
+```

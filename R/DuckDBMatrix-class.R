@@ -107,6 +107,9 @@
 #'
 #' @author Patrick Aboyoun
 #'
+#' @return The \code{DuckDBMatrix()} constructor returns a DuckDBMatrix object;
+#' the accessors return the component of \code{x} named by the accessor.
+#'
 #' @examples
 #' # Create a data.frame from a matrix
 #' df <- data.frame(
