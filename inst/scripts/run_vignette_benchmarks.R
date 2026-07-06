@@ -1,6 +1,43 @@
 #!/usr/bin/env Rscript
-# Run vignette benchmarks and output timing results
-# Usage: Rscript run_vignette_benchmarks.R
+# Best-effort backend comparison for the "Benchmarking DuckDBArray" vignette.
+#
+# Times the four core DelayedArray-backend operations (colSums, rowVars,
+# rowDeviances, rowNnzs) across four backends -- in-memory dgCMatrix, HDF5Array,
+# TileDBArray, DuckDBMatrix -- under TWO regimes:
+#
+#   * serial   : one core per backend. Per-core efficiency; matches the
+#                single-threaded methodology of the HDF5Array performance vignette.
+#   * parallel : each backend given its BEST-EFFORT configuration on a shared core
+#                budget, so the comparison is fair:
+#                  - DuckDBMatrix  : DuckDB autotunes; we cap it at the budget
+#                                    (SET threads = <cores>).
+#                  - HDF5Array     : SnowParam workers over blocks (separate
+#                                    processes -> no fork/file-lock issues), with
+#                                    HDF5 file locking disabled per worker.
+#                  - TileDBArray   : SnowParam workers, each with a FRESH TileDB
+#                                    context and the internal thread budget divided
+#                                    across workers (avoids oversubscription); file
+#                                    locks disabled. Generalizes the cancerdb
+#                                    preprocess.R pattern.
+#                  - dgCMatrix     : single-threaded baseline (Matrix is not
+#                                    parallelized); reported under both regimes.
+#
+# Writes benchmark_results.rds: a tidy data.frame (Operation, Backend, Regime,
+# Seconds) with a per-backend configuration recorded in attr(., "config"). The
+# vignette renders it via inst/scripts/make_timings_table.R.
+#
+# Usage:  Rscript run_vignette_benchmarks.R
+# Env:    BENCH_CORES     core budget (default = detectCores() - 1)
+#         BENCH_NCELLS    cell subset (default 200000)
+#         BENCH_SYNTHETIC if set, use a small synthetic matrix instead of EH1039
+#                         (for testing the harness without the 2 GB download)
+#         BENCH_REGIMES   comma-separated regimes to run (default "serial,parallel";
+#                         e.g. "parallel" to skip the slow single-threaded pass)
+#         BENCH_BLOCK_MB  DelayedArray auto block size in MB (default 1024 = 2^30)
+#         BENCH_HDF5_WORKERS    SnowParam workers for HDF5Array (default = cores)
+#         BENCH_TILEDB_WORKERS  SnowParam workers for TileDBArray (default = min(cores,8));
+#                               internal threads are budgeted to cores/workers.
+#                               Use probe_workers.R to find each backend's sweet spot.
 
 suppressPackageStartupMessages({
     library(DelayedArray)
@@ -9,233 +46,208 @@ suppressPackageStartupMessages({
     library(DuckDBArray)
     library(Matrix)
     library(MatrixGenerics)
-    library(scuttle)
-    library(scran)
-    library(scater)
-    library(ExperimentHub)
     library(BiocParallel)
+    library(tiledb)
+    library(DBI)
 })
 
-# Configure
-setAutoBlockSize(2^30)
+## ---- configuration -----------------------------------------------------------
+# BiocParallel caps SnowParam/MulticoreParam to 4 workers when IS_BIOC_BUILD_MACHINE
+# is set (to be gentle on the Bioc build farm). This is an OFFLINE benchmark, not a
+# vignette build, so clear it here to honor the requested core budget; without this
+# the disk backends would be silently limited to 4 workers while DuckDB uses all cores.
+Sys.unsetenv("IS_BIOC_BUILD_MACHINE")
+
+n_cells <- as.integer(Sys.getenv("BENCH_NCELLS", "200000"))
+# Cores AVAILABLE to this process. parallel::detectCores() reports the whole
+# machine (e.g. 96 on a shared node) even when a scheduler/cgroup grants you far
+# fewer -- using that would massively oversubscribe. Prefer the SLURM allocation,
+# then `nproc` (honors cgroup/CPU affinity), then detectCores() as a last resort.
+available_cores <- function() {
+    for (v in c("SLURM_CPUS_PER_TASK", "SLURM_CPUS_ON_NODE")) {
+        x <- suppressWarnings(as.integer(Sys.getenv(v, "")))
+        if (length(x) == 1L && !is.na(x) && x > 0L) return(x)
+    }
+    np <- tryCatch(as.integer(system("nproc", intern = TRUE, ignore.stderr = TRUE)),
+                   error = function(e) NA_integer_, warning = function(w) NA_integer_)
+    if (length(np) == 1L && !is.na(np) && np > 0L) return(np)
+    max(1L, parallel::detectCores())
+}
+cores <- as.integer(Sys.getenv("BENCH_CORES", as.character(max(1L, available_cores() - 1L))))
+# Per-backend worker counts (best effort differs by backend: R-level SnowParam is
+# process parallelism with serialization + single-file I/O contention, so the
+# optimum is usually FEWER workers than the core budget -- especially for HDF5Array,
+# which has no internal threading. Use probe_workers.R to find each backend's sweet
+# spot, then set these. DuckDB is not listed: it autotunes internal threads up to
+# the core budget.
+hdf5_workers <- as.integer(Sys.getenv("BENCH_HDF5_WORKERS", as.character(cores)))
+tiledb_workers <- as.integer(Sys.getenv("BENCH_TILEDB_WORKERS",
+                                        as.character(max(1L, min(cores, 8L)))))
+block_bytes <- 2^30    # 1 GiB blocks: large blocks favor these sparse column/row
+                       # aggregations (fewer scans); this is the DelayedArray max
+                       # the original benchmark used. Overridable via BENCH_BLOCK_MB.
+if (nzchar(Sys.getenv("BENCH_BLOCK_MB"))) {
+    block_bytes <- as.numeric(Sys.getenv("BENCH_BLOCK_MB")) * 2^20
+}
+block_MB <- round(block_bytes / 2^20)   # for display / config record
 setAutoBlockShape("scale")
-BPPARAM <- SerialParam()
-setAutoBPPARAM(BPPARAM)
+cat(sprintf("Config: %d cells | cores = %d | HDF5 workers = %d | TileDB workers = %d | block = %d MB%s\n",
+            n_cells, cores, hdf5_workers, tiledb_workers, block_MB,
+            if (nzchar(Sys.getenv("BENCH_SYNTHETIC"))) " | SYNTHETIC" else ""))
 
-cat("=== DuckDBArray Vignette Benchmarks ===\n\n")
-
-# Load data
-cat("Loading 10x Brain Cell Dataset...\n")
-hub <- ExperimentHub()
-brain_path <- hub[["EH1039"]]
-brain_full <- TENxMatrix(brain_path, group = "mm10")
-
-n_cells <- 12500
-brain_hdf5 <- brain_full[, seq_len(n_cells)]
-cat(sprintf("Dataset: %d genes x %d cells\n", nrow(brain_hdf5), ncol(brain_hdf5)))
-
-# Create backends
-cat("\nCreating backends...\n")
-
-# In-memory
-time_to_mem <- system.time({
+## ---- data --------------------------------------------------------------------
+cat("Preparing backends...\n")
+if (nzchar(Sys.getenv("BENCH_SYNTHETIC"))) {
+    set.seed(1L)
+    ng <- 2000L
+    brain_mem <- as(Matrix(rpois(ng * n_cells, 0.2), ng, n_cells, sparse = TRUE),
+                    "dgCMatrix")
+    rownames(brain_mem) <- paste0("Gene", seq_len(ng))
+    colnames(brain_mem) <- paste0("Cell", seq_len(n_cells))
+    brain_hdf5 <- writeHDF5Array(brain_mem)
+} else {
+    library(ExperimentHub)
+    hub <- ExperimentHub()
+    brain_full <- TENxMatrix(hub[["EH1039"]], group = "mm10")
+    brain_hdf5 <- brain_full[, seq_len(n_cells)]
     brain_mem <- as(brain_hdf5, "dgCMatrix")
-})
-cat(sprintf("dgCMatrix: %.1f sec\n", time_to_mem["elapsed"]))
+}
+cat(sprintf("  matrix: %d genes x %d cells\n", nrow(brain_mem), ncol(brain_mem)))
 
-# TileDBArray
+# TileDBArray backend
 tiledb_path <- tempfile()
-time_tiledb <- system.time({
-    brain_tiledb <- writeTileDBArray(brain_mem, path = tiledb_path)
-})
-cat(sprintf("TileDBArray: %.1f sec\n", time_tiledb["elapsed"]))
+brain_tiledb <- writeTileDBArray(brain_mem, path = tiledb_path)
 
-# DuckDBMatrix
+# DuckDBMatrix backend (transpose so features are columns for columnar access)
 duckdb_path <- tempfile()
-time_duckdb <- system.time({
-    brain_t <- t(brain_mem)
-    writeCoordArray(brain_t, duckdb_path)
-    dimtbls <- createDimTables(brain_t)
-    brain_ddb <- DuckDBMatrix(duckdb_path, datacol = "value",
-                              keycols = list(
-                                  index2 = setNames(seq_len(ncol(brain_t)), colnames(brain_t)),
-                                  index1 = setNames(seq_len(nrow(brain_t)), rownames(brain_t))
-                              ),
-                              dimtbls = dimtbls)
-})
-cat(sprintf("DuckDBMatrix: %.1f sec\n", time_duckdb["elapsed"]))
+brain_t <- t(brain_mem)
+writeCoordArray(brain_t, duckdb_path)
+brain_ddb <- DuckDBMatrix(duckdb_path, datacol = "value",
+    keycols = list(index2 = setNames(seq_len(ncol(brain_t)), colnames(brain_t)),
+                   index1 = setNames(seq_len(nrow(brain_t)), rownames(brain_t))),
+    dimtbls = createDimTables(brain_t))
 
-results <- list()
+## ---- best-effort parallel configuration --------------------------------------
+serial <- SerialParam()
 
-# Benchmark function
-bench <- function(name, expr_mem, expr_hdf5, expr_tiledb, expr_ddb) {
-    cat(sprintf("\n--- %s ---\n", name))
-    
-    time_mem <- system.time(eval(expr_mem))["elapsed"]
-    time_hdf5 <- system.time(eval(expr_hdf5))["elapsed"]
-    time_tiledb <- tryCatch(system.time(eval(expr_tiledb))["elapsed"], error = function(e) NA)
-    time_ddb <- system.time(eval(expr_ddb))["elapsed"]
-    
-    cat(sprintf("  In-memory: %.2f sec\n", time_mem))
-    cat(sprintf("  HDF5Array: %.2f sec\n", time_hdf5))
-    cat(sprintf("  TileDBArray: %s\n", ifelse(is.na(time_tiledb), "N/A", sprintf("%.2f sec", time_tiledb))))
-    cat(sprintf("  DuckDBMatrix: %.2f sec\n", time_ddb))
-    cat(sprintf("  DuckDB vs HDF5: %.1fx faster\n", time_hdf5 / time_ddb))
-    
-    results[[name]] <<- c(InMemory = time_mem, HDF5Array = time_hdf5, 
-                           TileDBArray = time_tiledb, DuckDB = time_ddb)
+# HDF5Array: SnowParam over blocks, file locking disabled on each worker.
+hdf5_snow <- SnowParam(workers = hdf5_workers, progressbar = FALSE)
+bpstart(hdf5_snow)
+invisible(bplapply(seq_len(bpnworkers(hdf5_snow)), function(i) {
+    Sys.setenv(HDF5_USE_FILE_LOCKING = "FALSE")
+    suppressPackageStartupMessages(library(HDF5Array))
+    if (requireNamespace("rhdf5", quietly = TRUE)) {
+        try(rhdf5::h5disableFileLocking(), silent = TRUE)
+    }
+    NULL
+}, BPPARAM = hdf5_snow))
+
+# TileDBArray: SnowParam with a fresh TileDB context per worker and internal
+# threads budgeted to cores / workers (generalizes cancerdb/preprocess.R).
+n_tile_workers <- max(1L, tiledb_workers)       # TileDB also threads internally
+tpw <- max(1L, cores %/% n_tile_workers)        # threads per worker
+tile_cfg <- tiledb_config()
+tile_cfg["sm.compute_concurrency_level"] <- as.character(tpw)
+tile_cfg["sm.io_concurrency_level"] <- as.character(tpw)
+tile_cfg["vfs.num_threads"] <- as.character(tpw)
+try(tile_cfg["vfs.file.enable_filelocks"] <- "false", silent = TRUE)
+tile_cfg_chr <- as.character(tile_cfg)
+tiledb_set_context(tiledb_ctx(tile_cfg))        # main-process context too
+tiledb_snow <- SnowParam(workers = n_tile_workers, progressbar = FALSE)
+bpstart(tiledb_snow)
+invisible(bplapply(seq_len(bpnworkers(tiledb_snow)), function(i, cfg) {
+    suppressPackageStartupMessages(library(tiledb))
+    tiledb::tiledb_set_context(tiledb::tiledb_ctx(cfg))
+    NULL
+}, cfg = tile_cfg_chr, BPPARAM = tiledb_snow))
+
+# DuckDBMatrix: threads set on the shared connection (autotunes otherwise).
+ddb_conn <- DuckDBDataFrame::acquireDuckDBConn()
+set_duckdb_threads <- function(n) dbExecute(ddb_conn, sprintf("SET threads = %d;", n))
+
+## ---- timing ------------------------------------------------------------------
+elapsed <- function(expr)
+    tryCatch(unname(system.time(force(expr))["elapsed"]),
+             error = function(e) NA_real_)
+
+# Time one backend on one operation under one regime, applying that backend's
+# regime-appropriate parallelism.
+time_backend <- function(backend, fun, regime) {
+    if (is.null(fun)) return(NA_real_)
+    if (backend == "DuckDB") {
+        set_duckdb_threads(if (regime == "parallel") cores else 1L)
+        return(elapsed(fun()))
+    }
+    if (backend == "InMemory") return(elapsed(fun()))  # single-threaded either way
+    bp <- if (regime == "serial") serial
+          else switch(backend, HDF5Array = hdf5_snow, TileDBArray = tiledb_snow, serial)
+    old <- getAutoBPPARAM()
+    on.exit(setAutoBPPARAM(old))
+    setAutoBlockSize(block_bytes)
+    setAutoBPPARAM(bp)
+    elapsed(fun())
 }
 
-# Feature selection benchmarks
-cat("\n=== Feature Selection ===\n")
-bench("colSums",
-      quote(Matrix::colSums(brain_mem)),
-      quote(colSums(brain_hdf5)),
-      quote(colSums(brain_tiledb)),
-      quote(colSums(brain_ddb)))
+# op -> per-backend thunk (NULL = unsupported on that backend)
+ops <- list(
+    colSums = list(
+        InMemory = function() Matrix::colSums(brain_mem),
+        HDF5Array = function() colSums(brain_hdf5),
+        TileDBArray = function() colSums(brain_tiledb),
+        DuckDB = function() colSums(brain_ddb)),
+    rowVars = list(
+        InMemory = function() rowVars(brain_mem),
+        HDF5Array = function() rowVars(brain_hdf5),
+        TileDBArray = function() rowVars(brain_tiledb),
+        DuckDB = function() rowVars(brain_ddb)),
+    rowDeviances = list(
+        InMemory = function() rowDeviances(brain_mem, family = "binomial"),
+        HDF5Array = function() rowDeviances(brain_hdf5, family = "binomial"),
+        TileDBArray = function() rowDeviances(brain_tiledb, family = "binomial"),
+        DuckDB = function() rowDeviances(brain_ddb, family = "binomial")),
+    rowNnzs = list(
+        InMemory = function() rowNnzs(brain_mem),
+        HDF5Array = function() rowNnzs(brain_hdf5),
+        TileDBArray = NULL,   # TileDBArray lacks rowCounts for its sparse block type
+        DuckDB = function() rowNnzs(brain_ddb))
+)
 
-bench("rowVars",
-      quote(rowVars(brain_mem)),
-      quote(rowVars(brain_hdf5)),
-      quote(rowVars(brain_tiledb)),
-      quote(rowVars(brain_ddb)))
+backends <- c("InMemory", "HDF5Array", "TileDBArray", "DuckDB")
+regimes <- trimws(strsplit(Sys.getenv("BENCH_REGIMES", "serial,parallel"), ",")[[1]])
+regimes <- regimes[nzchar(regimes)]
+rows <- list()
+for (opname in names(ops)) {
+    cat(sprintf("\n--- %s ---\n", opname))
+    for (bk in backends) {
+        fun <- ops[[opname]][[bk]]
+        for (rg in regimes) {
+            secs <- time_backend(bk, fun, rg)
+            rows[[length(rows) + 1L]] <- data.frame(
+                Operation = opname, Backend = bk, Regime = rg,
+                Seconds = secs, stringsAsFactors = FALSE)
+            cat(sprintf("  %-11s %-8s %s\n", bk, rg,
+                        if (is.na(secs)) "NA" else sprintf("%.2f s", secs)))
+        }
+    }
+}
+results <- do.call(rbind, rows)
 
-bench("rowDeviances",
-      quote(rowDeviances(brain_mem, family = "binomial")),
-      quote(rowDeviances(brain_hdf5, family = "binomial")),
-      quote(rowDeviances(brain_tiledb, family = "binomial")),
-      quote(rowDeviances(brain_ddb, family = "binomial")))
+## ---- record configuration + save ---------------------------------------------
+attr(results, "config") <- list(
+    n_cells = n_cells,
+    cores = cores,
+    block_MB = block_MB,
+    InMemory = "single-threaded (Matrix)",
+    HDF5Array = sprintf("SnowParam(%d) over blocks; HDF5 file locking disabled; %d MB blocks",
+                        hdf5_workers, block_MB),
+    TileDBArray = sprintf("SnowParam(%d) x %d threads/worker; file locks off; %d MB blocks",
+                          n_tile_workers, tpw, block_MB),
+    DuckDB = sprintf("internal threads (SET threads = %d; serial = 1)", cores)
+)
 
-bench("rowNnzs",
-      quote(rowNnzs(brain_mem)),
-      quote(rowNnzs(brain_hdf5)),
-      quote(NA),  # TileDBArray doesn't support rowCounts for sparse blocks
-      quote(rowNnzs(brain_ddb)))
+bpstop(hdf5_snow)
+bpstop(tiledb_snow)
 
-bench("nexprs",
-      quote(nexprs(brain_mem)),
-      quote(nexprs(brain_hdf5)),
-      quote(nexprs(brain_tiledb)),
-      quote(nexprs(brain_ddb)))
-
-# QC benchmarks
-cat("\n=== QC Metrics ===\n")
-bench("perCellQCMetrics",
-      quote(perCellQCMetrics(brain_mem)),
-      quote(perCellQCMetrics(brain_hdf5)),
-      quote(perCellQCMetrics(brain_tiledb)),
-      quote(perCellQCMetrics(brain_ddb)))
-
-bench("perFeatureQCMetrics",
-      quote(perFeatureQCMetrics(brain_mem)),
-      quote(perFeatureQCMetrics(brain_hdf5)),
-      quote(perFeatureQCMetrics(brain_tiledb)),
-      quote(perFeatureQCMetrics(brain_ddb)))
-
-# Pseudo-bulk
-cat("\n=== Pseudo-bulk ===\n")
-cell_types <- paste0("Cluster_", sample(1:20, n_cells, replace = TRUE))
-bench("summarizeAssayByGroup",
-      quote(summarizeAssayByGroup(brain_mem, cell_types, statistics = "sum")),
-      quote(summarizeAssayByGroup(brain_hdf5, cell_types, statistics = "sum")),
-      quote(summarizeAssayByGroup(brain_tiledb, cell_types, statistics = "sum")),
-      quote(summarizeAssayByGroup(brain_ddb, cell_types, statistics = "sum")))
-
-# Normalization
-cat("\n=== Normalization ===\n")
-bench("normalizeCounts",
-      quote(normalizeCounts(brain_mem)),
-      quote(normalizeCounts(brain_hdf5)),
-      quote(normalizeCounts(brain_tiledb)),
-      quote(normalizeCounts(brain_ddb)))
-
-# Create log-normalized matrices for scran benchmarks
-cat("\nCreating log-normalized matrices for scran benchmarks...\n")
-log_mem <- normalizeCounts(brain_mem)
-log_hdf5 <- normalizeCounts(brain_hdf5)
-log_tiledb <- tryCatch(normalizeCounts(brain_tiledb), error = function(e) NULL)
-log_ddb <- normalizeCounts(brain_ddb)
-
-# scran benchmarks
-cat("\n=== scran Methods ===\n")
-bench("modelGeneVar",
-      quote(modelGeneVar(log_mem)),
-      quote(modelGeneVar(log_hdf5)),
-      quote(NA),  # TileDBArray fails
-      quote(modelGeneVar(log_ddb)))
-
-bench("modelGeneVarByPoisson",
-      quote(modelGeneVarByPoisson(brain_mem)),
-      quote(modelGeneVarByPoisson(brain_hdf5)),
-      quote(NA),
-      quote(modelGeneVarByPoisson(brain_ddb)))
-
-bench("modelGeneCV2",
-      quote(modelGeneCV2(brain_mem)),
-      quote(modelGeneCV2(brain_hdf5)),
-      quote(NA),
-      quote(modelGeneCV2(brain_ddb)))
-
-# correlatePairs with HVGs
-mgv_ddb <- modelGeneVar(log_ddb)
-hvg <- head(order(mgv_ddb$bio, decreasing = TRUE), 200)
-bench("correlatePairs",
-      quote(correlatePairs(log_mem, subset.row = hvg)),
-      quote(correlatePairs(log_hdf5, subset.row = hvg)),
-      quote(NA),
-      quote(correlatePairs(log_ddb, subset.row = hvg)))
-
-bench("pairwiseTTests",
-      quote(pairwiseTTests(log_mem, groups = cell_types)),
-      quote(pairwiseTTests(log_hdf5, groups = cell_types)),
-      quote(NA),
-      quote(pairwiseTTests(log_ddb, groups = cell_types)))
-
-bench("pairwiseBinom",
-      quote(pairwiseBinom(log_mem, groups = cell_types)),
-      quote(pairwiseBinom(log_hdf5, groups = cell_types)),
-      quote(NA),
-      quote(pairwiseBinom(log_ddb, groups = cell_types)))
-
-bench("findMarkers",
-      quote(findMarkers(log_mem, groups = cell_types, BPPARAM = BPPARAM)),
-      quote(findMarkers(log_hdf5, groups = cell_types, BPPARAM = BPPARAM)),
-      quote(NA),
-      quote(findMarkers(log_ddb, groups = cell_types, BPPARAM = BPPARAM)))
-
-bench("scoreMarkers",
-      quote(scoreMarkers(log_mem, groups = cell_types)),
-      quote(scoreMarkers(log_hdf5, groups = cell_types)),
-      quote(NA),
-      quote(scoreMarkers(log_ddb, groups = cell_types)))
-
-bench("summaryMarkerStats",
-      quote(summaryMarkerStats(log_mem, groups = cell_types)),
-      quote(summaryMarkerStats(log_hdf5, groups = cell_types)),
-      quote(NA),
-      quote(summaryMarkerStats(log_ddb, groups = cell_types)))
-
-# Summary table
-cat("\n\n=== SUMMARY TABLE ===\n\n")
-summary_df <- do.call(rbind, lapply(names(results), function(op) {
-    r <- results[[op]]
-    data.frame(
-        Operation = op,
-        InMemory = round(r["InMemory"], 2),
-        HDF5Array = round(r["HDF5Array"], 2),
-        DuckDB = round(r["DuckDB"], 2),
-        DuckDB_vs_HDF5 = round(r["HDF5Array"] / r["DuckDB"], 1),
-        stringsAsFactors = FALSE
-    )
-}))
-print(summary_df, row.names = FALSE)
-
-# Save results
-output_file <- "benchmark_results.rds"
-saveRDS(results, output_file)
-cat(sprintf("\nResults saved to %s\n", output_file))
-
-cat("\n=== Benchmark Complete ===\n")
-
-
-
+saveRDS(results, "benchmark_results.rds")
+cat("\nSaved benchmark_results.rds\n")
+print(results, row.names = FALSE)

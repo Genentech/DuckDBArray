@@ -1,321 +1,101 @@
 # DuckDBArray
 
-## High-Performance DuckDB Backend for DelayedArray
-
-DuckDBArray provides DuckDB-backed implementations of `DelayedArray` and `DelayedMatrix` for efficient, out-of-memory operations on large array and matrix datasets. It achieves performance that often **exceeds in-memory operations** while keeping data on disk.
-
-### Why DuckDB for Arrays?
-
-SQL databases excel at the exact operations needed for matrix analysis: column sums, row variances, grouped aggregations. DuckDBArray translates matrix operations into SQL queries that:
-
-- **Outperform HDF5Array**: 8-79x faster for common operations
-- **Match or exceed in-memory**: Sparse-aware SQL beats dense R operations
-- **Scale linearly**: Handle datasets far larger than RAM
-- **Require no tuning**: No block size optimization needed
-
-## Performance Highlights
-
-On a 12,500 cell × 33,694 gene subset of the 10x Genomics 1.3M Brain Cell Dataset:
-
-| Operation | DuckDB (sec) | HDF5Array (sec) | Speedup |
-|-----------|--------------|-----------------|---------|
-| `colSums` | 0.1 | 1.0 | **12x faster** |
-| `rowVars` | 0.4 | 6.3 | **16x faster** |
-| `rowDeviances` | 0.5 | 6.4 | **13x faster** |
-| `rowNnzs` | 0.3 | 2.8 | **8.5x faster** |
-| Matrix multiplication | 0.8 | 2.1 | **2.6x faster** |
-| `crossprod` | 1.2 | 3.4 | **2.8x faster** |
-
-**Notable:** DuckDBArray's sparse-aware SQL implementation makes variance calculations **16x faster than HDF5Array** and row deviances **10x faster than in-memory** operations.
-
-See the **[DuckDBArray Comparison](vignettes/DuckDBArray-comparison.Rmd)** vignette for comprehensive benchmarks.
-
-## Core Classes
-
-### DuckDBMatrix
-
-The primary class for 2D matrix data:
-
-```r
-library(DuckDBArray)
-library(Matrix)
-
-# Create sparse matrix
-m <- rsparsematrix(10000, 5000, density = 0.05)
-
-# Write to Parquet in coordinate (COO) format
-path <- file.path(tempdir(), "matrix")
-dir.create(path)
-writeCoordArray(m, path)
-
-# Load as DuckDBMatrix (lazy, disk-backed)
-ddb_mat <- DuckDBMatrix(
-    path,
-    datacol = "value",
-    keycols = list(i = 1:10000, j = 1:5000)
-)
-
-# All matrixStats methods work
-library(MatrixGenerics)
-rowSums(ddb_mat)
-colMeans(ddb_mat)
-rowVars(ddb_mat)
-rowSds(ddb_mat)
-```
-
-### DuckDBArray
-
-For higher-dimensional arrays:
-
-```r
-# 3D array example
-arr_df <- expand.grid(i = 1:100, j = 1:50, k = 1:20)
-arr_df$value <- rnorm(nrow(arr_df))
-
-arrow::write_parquet(arr_df, "array.parquet")
-
-arr <- DuckDBArray(
-    "array.parquet",
-    datacol = "value",
-    keycols = list(i = 1:100, j = 1:50, k = 1:20)
-)
-
-dim(arr)  # [1] 100 50 20
-arr[1:10, , 1]  # Slice like normal array
-```
-
-### DuckDBArraySeed
-
-The DelayedArray seed that powers DuckDBArray:
-
-```r
-seed <- DuckDBArraySeed(
-    table = DuckDBTable(...),
-    dimnames = list(rows, cols)
-)
-
-# Wrap in DelayedArray
-darr <- DelayedArray(seed)
-```
-
-## Key Features
-
-### Sparse Array Support
-
-DuckDBArray natively handles sparse data:
-
-```r
-# Write sparse matrix in COO format
-library(Matrix)
-sparse_mat <- rsparsematrix(100000, 50000, density = 0.01)
-writeCoordArray(sparse_mat, "sparse_matrix")
-
-# Load and compute (SQL only processes non-zero values)
-ddb_sparse <- DuckDBMatrix("sparse_matrix", 
-                           keycols = list(i = 1:100000, j = 1:50000),
-                           datacol = "value")
-rowNnzs(ddb_sparse)  # Count non-zeros per row
-```
-
-### MatrixStats Integration
-
-Full support for matrixStats operations:
-
-| Function | SQL Translation | Performance |
-|----------|-----------------|-------------|
-| `rowSums` / `colSums` | `SUM() GROUP BY` | 12x faster than HDF5Array |
-| `rowMeans` / `colMeans` | `AVG() GROUP BY` | 8x faster |
-| `rowVars` / `colVars` | `VAR_SAMP() GROUP BY` | 16x faster |
-| `rowSds` / `colSds` | `STDDEV_SAMP() GROUP BY` | 14x faster |
-| `rowMins` / `colMins` | `MIN() GROUP BY` | 10x faster |
-| `rowMaxs` / `colMaxs` | `MAX() GROUP BY` | 10x faster |
-| `rowMedians` / `colMedians` | `QUANTILE_CONT(0.5)` | 6x faster |
-| `rowNnzs` / `colNnzs` | `COUNT(*) GROUP BY` | 8.5x faster |
-
-### Custom Functions
-
-DuckDBArray provides specialized functions:
-
-```r
-# Row deviances (Poisson or Binomial)
-devs <- rowDeviances(ddb_mat, family = "poisson")
-
-# Count non-zero values
-nnzs <- rowNnzs(ddb_mat)
-```
-
-### Dimension Tables
-
-For advanced users, create dimension tables for complex indexing:
-
-```r
-dimtbls <- createDimTables(
-    list(cells = cell_ids, genes = gene_ids),
-    dir = "dimtables"
-)
-```
-
-## DelayedArray Integration
-
-DuckDBArray is a fully-compliant DelayedArray backend:
-
-```r
-library(DelayedArray)
-
-# All DelayedArray operations work
-ddb_mat + 1
-log1p(ddb_mat)
-t(ddb_mat)
-ddb_mat[rowMeans(ddb_mat) > 10, ]
-
-# Combine with other backends
-combined <- cbind(ddb_mat, hdf5_mat)
-
-# Block processing
-blockApply(ddb_mat, mean, grid = rowAutoGrid(ddb_mat))
-```
-
-## Quick Start
-
-### From Sparse Matrix
-
-```r
-library(DuckDBArray)
-library(Matrix)
-
-# Create sparse count matrix
-counts <- rsparsematrix(50000, 10000, density = 0.05)
-dimnames(counts) <- list(
-    paste0("GENE", 1:50000),
-    paste0("CELL", 1:10000)
-)
-
-# Write to Parquet
-path <- file.path(tempdir(), "counts")
-writeCoordArray(counts, path)
-
-# Load as DuckDBMatrix
-ddb_counts <- DuckDBMatrix(
-    path,
-    keycols = list(i = rownames(counts), j = colnames(counts)),
-    datacol = "value"
-)
-
-# Compute statistics
-lib_sizes <- colSums(ddb_counts)
-mean_expr <- rowMeans(ddb_counts)
-gene_vars <- rowVars(ddb_counts)
-```
-
-### Benchmark Against Other Backends
-
-```r
-library(HDF5Array)
-library(microbenchmark)
-
-# Write same data to HDF5
-h5_file <- tempfile(fileext = ".h5")
-h5_mat <- writeHDF5Array(counts, filepath = h5_file, name = "counts")
-
-# Compare
-microbenchmark(
-    duckdb = colSums(ddb_counts),
-    hdf5 = colSums(h5_mat),
-    times = 10
-)
-# DuckDB is typically 8-12x faster
-```
-
-## Backend Comparison
-
-| Backend | Speed | Memory | Cloud | Tuning | Sparse |
-|---------|-------|--------|-------|--------|--------|
-| **DuckDBArray** | ⚡⚡⚡ Fast | 💾 Constant | ☁️ Yes | ✅ None | ✅ Native |
-| HDF5Array | 🐌 Slow | 💾 Moderate | ❌ No | ⚠️ Block size | ⚠️ Dense only |
-| TileDBArray | ⚡ Fast | 💾 Moderate | ☁️ Yes | ⚠️ Tiles | ✅ Native |
-| In-memory | ⚡⚡⚡ Fast | 💀 High | ❌ No | ✅ None | ✅ Native |
-
-## Use Cases
-
-### Single-Cell RNA-seq
-
-```r
-library(SingleCellExperiment)
-
-# Load SingleCellExperiment with DuckDBMatrix assays
-sce <- SingleCellExperiment(
-    assays = list(counts = ddb_counts)
-)
-
-# All scater/scuttle/scran functions work
-# (But BiocDuckDB provides optimized versions!)
-```
-
-### Large-Scale Matrix Operations
-
-```r
-# Correlation matrix (79x faster than HDF5Array!)
-gene_cors <- cor(t(ddb_counts[1:1000, ]))
-
-# Matrix multiplication
-scores <- ddb_counts %*% gene_weights
-
-# Cross-product
-cov_mat <- crossprod(scale(ddb_counts))
-```
-
-## When to Use DuckDBArray
-
-**Recommended for:**
-- Single-cell count matrices (sparse, high-dimensional)
-- Datasets too large for memory
-- Matrix statistics and aggregations
-- When you want HDF5Array simplicity with better performance
-- Cloud-based workflows (Parquet on S3/GCS)
-
-**Consider alternatives when:**
-- Data fits comfortably in memory (use `dgCMatrix`)
-- You need mutable arrays (use HDF5Array)
-- You need array versioning (use TileDBArray)
-- You need native 10x format support (use `TENxMatrix`)
-
-## Documentation
-
-- **[DuckDBArray Classes](vignettes/DuckDBArray-classes.Rmd)**: Architecture and class design
-- **[DuckDBArray Comparison](vignettes/DuckDBArray-comparison.Rmd)**: Comprehensive benchmarks against HDF5Array and TileDBArray
+*A DuckDB backend for DelayedArray — out-of-core arrays and matrices, queried as
+columnar Parquet.*
+
+## Overview
+
+`DuckDBArray` provides DuckDB-backed implementations of Bioconductor's
+`DelayedArray` / `DelayedMatrix`, so a large array can live **on disk** behind the
+ordinary R array API. Data is stored as coordinate (COO) **Parquet** and queried
+lazily through [DuckDB](https://duckdb.org): `dim()`, `[`, arithmetic, and the
+`MatrixGenerics` summaries (`rowSums`, `rowVars`, …) all work without loading the
+matrix into memory. Row/column reductions are pushed down into SQL aggregations, so
+DuckDB does the scan and the arithmetic and only the (small) per-margin result
+returns to R.
+
+It is part of the **BiocDuckDB** suite and builds on `DuckDBDataFrame` (the
+tabular/SQL foundation); it slots in alongside `HDF5Array` and `TileDBArray` as
+another `DelayedArray` backend.
 
 ## Installation
 
 ```r
-# Requires DuckDBDataFrame
-# install.packages("remotes")
-remotes::install_github("your-org/DuckDBDataFrame")
-remotes::install_github("your-org/DuckDBArray")
+# once available from Bioconductor:
+if (!require("BiocManager")) install.packages("BiocManager")
+BiocManager::install("DuckDBArray")
 ```
 
-## Dependencies
+`DuckDBArray` requires `DuckDBDataFrame`; both are part of the BiocDuckDB suite.
 
-DuckDBArray depends on:
-- **DuckDBDataFrame**: Foundation for DuckDB-backed structures
-- **Bioconductor**: DelayedArray, SparseArray, S4Arrays, MatrixGenerics, S4Vectors, IRanges
-- **Sparse matrices**: Matrix
-- **Data I/O**: arrow, dplyr
+## Quick start
 
-## Contributing
+A `DuckDBMatrix` is backed by a Parquet file in coordinate form. Write a matrix with
+`writeCoordArray()`, add dimension tables with `createDimTables()` for pruning, and
+open it as a lazy, disk-backed matrix:
 
-Contributions are welcome! Please:
-- Report performance regressions through GitHub issues
-- Include benchmarks for new matrix operations
-- Follow Bioconductor standards
+```r
+library(DuckDBArray)
+library(Matrix)
+library(MatrixGenerics)
+
+m <- Matrix(rpois(200 * 50, lambda = 1), nrow = 200, ncol = 50, sparse = TRUE)
+rownames(m) <- paste0("Gene", seq_len(nrow(m)))
+colnames(m) <- paste0("Cell", seq_len(ncol(m)))
+
+path <- tempfile()
+writeCoordArray(m, path)
+mat <- DuckDBMatrix(path, datacol = "value",
+                    keycols = list(index1 = setNames(seq_len(nrow(m)), rownames(m)),
+                                   index2 = setNames(seq_len(ncol(m)), colnames(m))),
+                    dimtbls = createDimTables(m))
+
+mat
+rowSums(mat)[1:5]
+rowVars(mat)[1:5]
+```
+
+Two count-oriented helpers are added for single-cell feature selection:
+`rowNnzs()` / `colNnzs()` (non-zero counts) and `rowDeviances()` (binomial/Poisson
+deviance). `DuckDBArray()` handles arrays of any dimension; a `DuckDBMatrix` is the
+2-D case.
+
+## Performance
+
+On the 10x Genomics 1.3M brain-cell dataset (200,000-cell subset, 16 cores), DuckDB
+**matches or beats an in-memory `dgCMatrix` while staying on disk** — e.g. `rowVars`
+in ~1 s (vs ~114 s for `HDF5Array` at its best-effort 8-worker configuration), and
+`rowDeviances` about **20× faster than the in-memory** sparse matrix by computing the
+deviance directly in SQL. Just as important, DuckDB reaches this by **autotuning its
+own parallelism**, whereas the other on-disk backends need manual finesse
+(`SnowParam` workers, per-worker contexts, thread budgeting, block-size tuning) and
+still scale unevenly.
+
+The **Benchmarking DuckDBArray** vignette has the full picture: both single-threaded
+and best-effort-parallel regimes, each backend configured at its best, with the
+exact configuration recorded alongside the numbers. Reproduce or extend it with the
+scripts in [`inst/scripts/`](inst/scripts).
+
+## Documentation
+
+- **Introduction to DuckDBArray** — motivation, construction, and the common
+  operations (`vignettes/DuckDBArray.Rmd`).
+- **Benchmarking DuckDBArray** — a fair comparison against in-memory, `HDF5Array`,
+  and `TileDBArray` (`vignettes/DuckDBArray-comparison.Rmd`).
+- **Implementing the DuckDBArray backend** — the `DelayedArray` seed contract and SQL
+  translation, for developers (`vignettes/DuckDBArray-backend.Rmd`).
+
+## When to use DuckDBArray
+
+A good fit when the matrix is larger than memory (or you want to keep memory free),
+when the data is sparse (single-cell counts, scATAC accessibility), when the workload
+is dominated by columnar aggregations, or when the data already lives on disk as
+Parquet that other tools should read. An in-memory `dgCMatrix` remains the fastest
+choice when the data fits comfortably in RAM, and dense linear-algebra or heavy
+random-access workloads may favor other backends. For higher-level single-cell
+analysis (QC, normalization, variance modelling, marker detection) built on this
+backend, see the **BiocDuckDB** package.
 
 ## License
 
-DuckDBArray is licensed under the MIT License. See the LICENSE file for details.
-
-## Acknowledgements
-
-Special thanks to:
-- The Bioconductor DelayedArray framework
-- The matrixStats package for the comprehensive API
-- The DuckDB team for query optimization
-- The SparseArray team for sparse array infrastructure
+Apache License 2.0. Copyright Genentech, Inc.

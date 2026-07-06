@@ -7,6 +7,10 @@
 \alias{[,DuckDBMatrix,ANY,ANY,ANY-method}
 \alias{coerce,DuckDBMatrix,COO_SparseMatrix-method}
 \title{DuckDBMatrix objects}
+\value{
+The \code{DuckDBMatrix()} constructor returns a DuckDBMatrix object;
+the accessors return the component of \code{x} named by the accessor.
+}
 \description{
 The DuckDBMatrix class is a \link[DelayedArray]{DelayedMatrix} subclass
 for representing and operating on a DuckDB table.

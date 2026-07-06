@@ -228,6 +228,9 @@ function(x, path, indexcols, datacol, grid, grid_suffix,
 #'
 #' @author Patrick Aboyoun
 #'
+#' @return Called for its side effect of writing \code{x} to \code{path} as
+#' coordinate-format Parquet; returns \code{NULL} invisibly.
+#'
 #' @examples
 #' # Write the state.x77 matrix to multiple Parquet files using grid partitioning
 #' tf <- tempfile()

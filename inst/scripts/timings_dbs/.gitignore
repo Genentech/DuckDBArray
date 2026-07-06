@@ -1,4 +1,0 @@
-# Ignore machine-specific timing results
-# Users should create their own subdirectory and run benchmarks there
-*/timings*.dcf
-*/run_benchmarks.log

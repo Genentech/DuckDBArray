@@ -1,6 +1,6 @@
 Package: DuckDBArray
-Version: 0.9.15
-Date: 2026-06-15
+Version: 0.9.16
+Date: 2026-07-06
 Title: DuckDB-Backed DelayedArray Implementation
 Description:
     Provides DuckDB-backed implementations of DelayedArray and DelayedMatrix
@@ -15,7 +15,7 @@ Authors@R:
     )
 License: Apache License 2.0
 Depends:
-    R (>= 4.4.0),
+    R (>= 4.6.0),
     methods,
     stats,
     DuckDBDataFrame,

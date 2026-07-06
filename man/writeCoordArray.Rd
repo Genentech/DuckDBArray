@@ -152,6 +152,10 @@ does not support this parameter because DuckDB connections are not thread-safe
 for concurrent execution. The \code{DuckDBArray} method uses sequential
 execution and relies on DuckDB's internal parallelism for performance.}
 }
+\value{
+Called for its side effect of writing \code{x} to \code{path} as
+coordinate-format Parquet; returns \code{NULL} invisibly.
+}
 \description{
 An \code{arrow::write_dataset} wrapper function to write array-like objects
 in coordinate format. If dimension names are present, they are substituted

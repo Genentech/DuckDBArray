@@ -125,8 +125,8 @@
 #' tf <- tempfile(fileext = ".parquet")
 #' on.exit(unlink(tf))
 #' arrow::write_parquet(df, tf)
-#' tbl <- DuckDBArray(tf, datacol = "fate",
-#'                    keycols = c("Class", "Sex", "Age", "Survived"))@seed@table
+#' tbl <- DuckDBTable(tf, datacols = "fate",
+#'                    keycols = c("Class", "Sex", "Age", "Survived"))
 #' rowSums(tbl)
 #' colMeans(tbl)
 #'

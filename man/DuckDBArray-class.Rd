@@ -15,6 +15,11 @@
 \alias{aperm,DuckDBArray-method}
 \alias{t,DuckDBArray-method}
 \title{DuckDBArray objects}
+\value{
+The \code{DuckDBArray()} constructor returns a DuckDBArray object.
+The accessors return the component of \code{x} named by the accessor (e.g.
+\code{dim(x)} returns an integer vector of the array dimensions).
+}
 \description{
 The DuckDBArray class is a \link[DelayedArray]{DelayedArray} subclass
 for representing and operating on a DuckDB table.
