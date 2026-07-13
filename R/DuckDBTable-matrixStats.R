@@ -163,23 +163,37 @@ NULL
     list(keycols = keycols, groups = groups, along = along, k = k)
 }
 
+.na_rm_guard <- function(expr, y, na.rm) {
+    if (isTRUE(na.rm)) {
+        return(expr)
+    }
+    has_na <- call(">", call("sum", call("as.integer", call("is.na", y)),
+                             na.rm = TRUE), 0L)
+    call("ifelse", has_na, NA_real_, expr)
+}
+
 #' @importClassesFrom DuckDBDataFrame DuckDBTable
 #' @importFrom dplyr group_by n summarize
 #' @importFrom DuckDBDataFrame tblconn
 #' @importFrom S4Vectors new2
 .marginCounts <-
-function(x, value = TRUE, dims = 1, fill = 0, margin = c("row", "col")) {
+function(x, value = TRUE, na.rm = FALSE, dims = 1, fill = 0,
+         margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
     datacols <- x@datacols
     if (value != fill) {
-        aggr <- sapply(datacols, function(y) call("countif", call("==", call("(", y), value)),
+        aggr <- sapply(datacols, function(y)
+                       .na_rm_guard(call("countif", call("==", call("(", y), value)),
+                                    y, na.rm),
                        simplify = FALSE)
     } else {
         aggr <- sapply(datacols, function(y)
-                       call("+",
-                            call("countif", call("==", call("(", y), value)),
-                            call("(", call("-", k, call("n")))),
+                       .na_rm_guard(
+                            call("+",
+                                 call("countif", call("==", call("(", y), value)),
+                                 call("(", call("-", k, call("n")))),
+                            y, na.rm),
                        simplify = FALSE)
     }
     conn <- summarize(group_by(tblconn(x, select = FALSE), !!!groups), !!!aggr)
@@ -192,7 +206,8 @@ function(x, value = TRUE, dims = 1, fill = 0, margin = c("row", "col")) {
 #' @importFrom MatrixGenerics rowCounts
 setMethod("rowCounts", "DuckDBTable",
 function(x, value = TRUE, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
-    .marginCounts(x, value = value, dims = dims, fill = fill, margin = "row")
+    .marginCounts(x, value = value, na.rm = na.rm, dims = dims, fill = fill,
+                  margin = "row")
 })
 
 #' @export
@@ -200,21 +215,24 @@ function(x, value = TRUE, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRU
 #' @importFrom MatrixGenerics colCounts
 setMethod("colCounts", "DuckDBTable",
 function(x, value = TRUE, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
-    .marginCounts(x, value = value, dims = dims, fill = fill, margin = "col")
+    .marginCounts(x, value = value, na.rm = na.rm, dims = dims, fill = fill,
+                  margin = "col")
 })
 
 #' @importClassesFrom DuckDBDataFrame DuckDBTable
 #' @importFrom dplyr group_by n summarize
 #' @importFrom DuckDBDataFrame tblconn
 #' @importFrom S4Vectors new2
-.marginMaxs <- function(x, dims = 1, fill = 0, margin = c("row", "col")) {
+.marginMaxs <- function(x, na.rm = FALSE, dims = 1, fill = 0,
+                        margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
     datacols <- x@datacols
     nfill <- call("(", call("-", k, call("n")))
     aggr <- sapply(datacols, function(y) {
         stat <- call("max", y, na.rm = TRUE)
-        call("if", call("==", nfill, 0L), stat, call("greatest", stat, fill))
+        expr <- call("if", call("==", nfill, 0L), stat, call("greatest", stat, fill))
+        .na_rm_guard(expr, y, na.rm)
     }, simplify = FALSE)
     conn <- summarize(group_by(tblconn(x, select = FALSE), !!!groups), !!!aggr)
     datacols <- as.expression(sapply(names(aggr), as.name, simplify = FALSE))
@@ -226,7 +244,7 @@ function(x, value = TRUE, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRU
 #' @importFrom MatrixGenerics rowMaxs
 setMethod("rowMaxs", "DuckDBTable",
 function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
-    .marginMaxs(x, dims = dims, fill = fill, margin = "row")
+    .marginMaxs(x, na.rm = na.rm, dims = dims, fill = fill, margin = "row")
 })
 
 #' @export
@@ -234,30 +252,35 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
 #' @importFrom MatrixGenerics colMaxs
 setMethod("colMaxs", "DuckDBTable",
 function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
-    .marginMaxs(x, dims = dims, fill = fill, margin = "col")
+    .marginMaxs(x, na.rm = na.rm, dims = dims, fill = fill, margin = "col")
 })
 
 #' @importClassesFrom DuckDBDataFrame DuckDBTable
 #' @importFrom dplyr group_by n summarize
 #' @importFrom DuckDBDataFrame tblconn
 #' @importFrom S4Vectors new2
-.marginMeans <- function(x, dims = 1, fill = 0, margin = c("row", "col")) {
+.marginMeans <- function(x, na.rm = FALSE, dims = 1, fill = 0,
+                         margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
     datacols <- x@datacols
     if (fill == 0) {
-        aggr <- sapply(datacols, function(y) call("/", call("sum", y, na.rm = TRUE), k),
+        aggr <- sapply(datacols, function(y)
+                       .na_rm_guard(call("/", call("sum", y, na.rm = TRUE), k),
+                                    y, na.rm),
                        simplify = FALSE)
     } else {
         aggr <- sapply(datacols, function(y)
-                       call("/",
-                            call("(",
-                                 call("+",
-                                      call("sum", y, na.rm = TRUE),
-                                      call("*",
-                                           fill,
-                                           call("(", call("-", k, call("n")))))),
-                            k),
+                       .na_rm_guard(
+                            call("/",
+                                 call("(",
+                                      call("+",
+                                           call("sum", y, na.rm = TRUE),
+                                           call("*",
+                                                fill,
+                                                call("(", call("-", k, call("n")))))),
+                                 k),
+                            y, na.rm),
                        simplify = FALSE)
     }
     conn <- summarize(group_by(tblconn(x, select = FALSE), !!!groups), !!!aggr)
@@ -269,28 +292,30 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
 #' @importClassesFrom DuckDBDataFrame DuckDBTable
 #' @importFrom MatrixGenerics rowMeans
 setMethod("rowMeans", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 0, ...) {
-    .marginMeans(x, dims = dims, fill = fill, margin = "row")
+    .marginMeans(x, na.rm = na.rm, dims = dims, fill = fill, margin = "row")
 })
 
 #' @export
 #' @importClassesFrom DuckDBDataFrame DuckDBTable
 #' @importFrom MatrixGenerics colMeans
 setMethod("colMeans", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 0, ...) {
-    .marginMeans(x, dims = dims, fill = fill, margin = "col")
+    .marginMeans(x, na.rm = na.rm, dims = dims, fill = fill, margin = "col")
 })
 
 #' @importClassesFrom DuckDBDataFrame DuckDBTable
 #' @importFrom dplyr group_by n summarize
 #' @importFrom DuckDBDataFrame tblconn
 #' @importFrom S4Vectors new2
-.marginMins <- function(x, dims = 1, fill = 0, margin = c("row", "col")) {
+.marginMins <- function(x, na.rm = FALSE, dims = 1, fill = 0,
+                        margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
     datacols <- x@datacols
     nfill <- call("(", call("-", k, call("n")))
     aggr <- sapply(datacols, function(y) {
         stat <- call("min", y, na.rm = TRUE)
-        call("if", call("==", nfill, 0L), stat, call("least", stat, fill))
+        expr <- call("if", call("==", nfill, 0L), stat, call("least", stat, fill))
+        .na_rm_guard(expr, y, na.rm)
     }, simplify = FALSE)
     conn <- summarize(group_by(tblconn(x, select = FALSE), !!!groups), !!!aggr)
     datacols <- as.expression(sapply(names(aggr), as.name, simplify = FALSE))
@@ -302,7 +327,7 @@ setMethod("colMeans", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill =
 #' @importFrom MatrixGenerics rowMins
 setMethod("rowMins", "DuckDBTable",
 function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
-    .marginMins(x, dims = dims, fill = fill, margin = "row")
+    .marginMins(x, na.rm = na.rm, dims = dims, fill = fill, margin = "row")
 })
 
 #' @export
@@ -310,27 +335,31 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
 #' @importFrom MatrixGenerics colMins
 setMethod("colMins", "DuckDBTable",
 function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
-    .marginMins(x, dims = dims, fill = fill, margin = "col")
+    .marginMins(x, na.rm = na.rm, dims = dims, fill = fill, margin = "col")
 })
 
 #' @importClassesFrom DuckDBDataFrame DuckDBTable
 #' @importFrom dplyr group_by n summarize
 #' @importFrom DuckDBDataFrame tblconn
 #' @importFrom S4Vectors new2
-.marginSums <- function(x, dims = 1, fill = 0, margin = c("row", "col")) {
+.marginSums <- function(x, na.rm = FALSE, dims = 1, fill = 0,
+                        margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
     datacols <- x@datacols
     if (fill == 0) {
-        aggr <- sapply(datacols, function(y) call("sum", y, na.rm = TRUE),
+        aggr <- sapply(datacols, function(y)
+                       .na_rm_guard(call("sum", y, na.rm = TRUE), y, na.rm),
                        simplify = FALSE)
     } else {
         aggr <- sapply(datacols, function(y)
-                       call("+",
-                            call("sum", y, na.rm = TRUE),
-                            call("*",
-                                 fill,
-                                 call("(", call("-", k, call("n"))))),
+                       .na_rm_guard(
+                            call("+",
+                                 call("sum", y, na.rm = TRUE),
+                                 call("*",
+                                      fill,
+                                      call("(", call("-", k, call("n"))))),
+                            y, na.rm),
                        simplify = FALSE)
     }
     conn <- summarize(group_by(tblconn(x, select = FALSE), !!!groups), !!!aggr)
@@ -342,21 +371,22 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
 #' @importClassesFrom DuckDBDataFrame DuckDBTable
 #' @importFrom MatrixGenerics rowSums
 setMethod("rowSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 0, ...) {
-    .marginSums(x, dims = dims, fill = fill, margin = "row")
+    .marginSums(x, na.rm = na.rm, dims = dims, fill = fill, margin = "row")
 })
 
 #' @export
 #' @importClassesFrom DuckDBDataFrame DuckDBTable
 #' @importFrom MatrixGenerics colSums
 setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 0, ...) {
-    .marginSums(x, dims = dims, fill = fill, margin = "col")
+    .marginSums(x, na.rm = na.rm, dims = dims, fill = fill, margin = "col")
 })
 
 #' @importClassesFrom DuckDBDataFrame DuckDBTable
 #' @importFrom dplyr group_by left_join n summarize
 #' @importFrom DuckDBDataFrame tblconn
 #' @importFrom S4Vectors new2
-.marginVars <- function(x, dims = 1, fill = 0, margin = c("row", "col")) {
+.marginVars <- function(x, na.rm = FALSE, dims = 1, fill = 0,
+                        margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
     datacols <- x@datacols
@@ -379,7 +409,8 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
                                   call("(", call("-", n, 1L)))
             sum_sq_term <- call("*", call("*", sum_y, sum_y),
                                call("(", call("-", call("/", 1, n), call("/", 1, k))))
-            call("/", call("(", call("+", var_samp_term, sum_sq_term)), k - 1L)
+            expr <- call("/", call("(", call("+", var_samp_term, sum_sq_term)), k - 1L)
+            .na_rm_guard(expr, y, na.rm)
         }, simplify = FALSE)
 
         conn <- summarize(group_by(conn, !!!groups), !!!aggr)
@@ -412,7 +443,8 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
         sum_dev_sq <- call("sum", call("*", dev, dev), na.rm = TRUE)
         fill_dev <- call("(", call("-", fill, y_mean_agg))
         zero_contrib <- call("*", call("(", call("*", fill_dev, fill_dev)), nfill)
-        call("/", call("(", call("+", sum_dev_sq, zero_contrib)), k - 1L)
+        expr <- call("/", call("(", call("+", sum_dev_sq, zero_contrib)), k - 1L)
+        .na_rm_guard(expr, y, na.rm)
     }, simplify = FALSE)
 
     conn <- summarize(group_by(conn, !!!groups), !!!aggr)
@@ -421,9 +453,10 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
 }
 
 #' @importFrom DuckDBDataFrame sql_call
-.marginSds <- function(x, dims = 1, fill = 0, margin = c("row", "col")) {
+.marginSds <- function(x, na.rm = FALSE, dims = 1, fill = 0,
+                       margin = c("row", "col")) {
     margin <- match.arg(margin)
-    ans <- .marginVars(x, dims = dims, fill = fill, margin = margin)
+    ans <- .marginVars(x, na.rm = na.rm, dims = dims, fill = fill, margin = margin)
     sql_call(ans, "sqrt")
 }
 
@@ -432,7 +465,7 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
 #' @importFrom MatrixGenerics rowSds
 setMethod("rowSds", "DuckDBTable",
 function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
-    .marginSds(x, dims = dims, fill = fill, margin = "row")
+    .marginSds(x, na.rm = na.rm, dims = dims, fill = fill, margin = "row")
 })
 
 #' @export
@@ -440,7 +473,7 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
 #' @importFrom MatrixGenerics colSds
 setMethod("colSds", "DuckDBTable",
 function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
-    .marginSds(x, dims = dims, fill = fill, margin = "col")
+    .marginSds(x, na.rm = na.rm, dims = dims, fill = fill, margin = "col")
 })
 
 #' @export
@@ -448,7 +481,7 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
 #' @importFrom MatrixGenerics rowVars
 setMethod("rowVars", "DuckDBTable",
 function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
-    .marginVars(x, dims = dims, fill = fill, margin = "row")
+    .marginVars(x, na.rm = na.rm, dims = dims, fill = fill, margin = "row")
 })
 
 #' @export
@@ -456,7 +489,7 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
 #' @importFrom MatrixGenerics colVars
 setMethod("colVars", "DuckDBTable",
 function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
-    .marginVars(x, dims = dims, fill = fill, margin = "col")
+    .marginVars(x, na.rm = na.rm, dims = dims, fill = fill, margin = "col")
 })
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

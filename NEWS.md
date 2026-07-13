@@ -1,3 +1,16 @@
+# DuckDBArray 0.9.17
+
+## Bug fixes
+
+- The `DuckDBTable` margin statistics (`rowSums`/`colSums`, `rowMeans`/`colMeans`,
+  `rowVars`/`colVars`, `rowSds`/`colSds`, `rowMaxs`/`colMaxs`, `rowMins`/`colMins`,
+  `rowCounts`/`colCounts`) now honor their `na.rm` argument. Previously `na.rm`
+  was accepted but ignored — the statistic always dropped `NA`/`NULL`, diverging
+  from the `MatrixGenerics` default of `na.rm = FALSE`. Because SQL aggregate
+  functions inherently drop `NULL`, `na.rm = FALSE` is emulated with a per-group
+  guard: a group containing any `NULL` yields `NA`. The common `na.rm = TRUE`
+  path (and any group without `NULL`s) is unchanged.
+
 # DuckDBArray 0.9.16
 
 ## Documentation

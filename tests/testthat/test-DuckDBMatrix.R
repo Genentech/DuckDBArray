@@ -342,3 +342,29 @@ test_that("rowDeviances works on airway counts DuckDBMatrix", {
     valid <- dev_pois_ddb > 0 & dev_binom_ddb > 0
     expect_gt(cor(dev_pois_ddb[valid], dev_binom_ddb[valid]), 0.95)
 })
+
+test_that("margin stats honor na.rm (NA propagates when na.rm = FALSE)", {
+    # A stored NULL/NA in the value column: base MatrixGenerics propagates NA for
+    # the default na.rm = FALSE, and removes it for na.rm = TRUE. SQL aggregates
+    # always drop NULLs, so the na.rm = FALSE path is emulated with a per-group
+    # NA guard. fill = 0 (sparse); row 1 has an NA, row 2 does not.
+    df <- data.frame(r = c(1L, 1L, 2L, 2L, 2L),
+                     c = c(1L, 3L, 1L, 2L, 3L),
+                     v = c(1.0, NA, 4.0, 5.0, 6.0))
+    tf <- tempfile(fileext = ".parquet")
+    on.exit(unlink(tf))
+    arrow::write_parquet(df, tf)
+    m <- DuckDBMatrix(tf, datacol = "v", keycols = list(r = 1:2, c = 1:3))
+
+    D <- matrix(0, 2, 3)
+    D[1, 1] <- 1; D[1, 3] <- NA; D[2, 1] <- 4; D[2, 2] <- 5; D[2, 3] <- 6
+
+    # Compare values as plain numerics (the DuckDBMatrix result is a named 1-D
+    # array; the dense oracle is an unnamed numeric vector).
+    eq <- function(a, b) expect_equal(as.numeric(a), as.numeric(b))
+    eq(rowSums(m, na.rm = TRUE),  MatrixGenerics::rowSums(D, na.rm = TRUE))
+    eq(rowSums(m, na.rm = FALSE), MatrixGenerics::rowSums(D, na.rm = FALSE))
+    eq(rowMeans(m, na.rm = FALSE), MatrixGenerics::rowMeans(D, na.rm = FALSE))
+    eq(rowMaxs(m, na.rm = FALSE), MatrixGenerics::rowMaxs(D, na.rm = FALSE))
+    eq(rowMins(m, na.rm = FALSE), MatrixGenerics::rowMins(D, na.rm = FALSE))
+})
