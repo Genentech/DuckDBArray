@@ -187,6 +187,31 @@ NULL
 ### Helper functions for self-crossproducts via SQL self-join
 ###
 
+# Rough ceiling on the intermediate a Gram (cross-product) self-join builds,
+# in row-pairs. A crossprod / tcrossprod self-join emits ~nnz^2 / contracted_dim
+# co-occurrence pairs before the GROUP BY can reduce them.
+.GRAM_PAIR_LIMIT <- 5e8
+
+# Trip a clear error BEFORE a Gram self-join OOMs.
+.check_gram_size <- function(x, contracted_dim, op) {
+    nnz <- as.numeric(nzcount(x@seed))
+    limit <- getOption("DuckDBArray.gram_pair_limit", .GRAM_PAIR_LIMIT)
+    est_pairs <- (nnz * nnz) / max(as.numeric(contracted_dim), 1)
+    if (est_pairs > limit) {
+        stop(sprintf(paste0(
+            "%s would build ~%.1e self-join pairs (nnz=%s, contracted dim=%s), over the %.0e safeguard -- ",
+            "this self-join does not scale yet (blocked crossprod is future work). Subset the matrix (e.g. to ",
+            "highly variable genes) first, or materialize with as.matrix() and use base R."),
+            op, est_pairs,
+            format(nnz, big.mark = ",", scientific = FALSE, trim = TRUE),
+            format(contracted_dim, big.mark = ",", scientific = FALSE,
+                   trim = TRUE),
+            limit),
+            call. = FALSE)
+    }
+    invisible(NULL)
+}
+
 #' @importFrom dplyr group_by inner_join select summarize
 #' @importFrom stats setNames
 #' @importFrom DuckDBDataFrame dimtbls tblconn
@@ -194,6 +219,7 @@ NULL
     if (x@seed@fill != 0) {
         stop("must be a zero-filled array")
     }
+    .check_gram_size(x, ncol(x), "tcrossprod")
     table <- x@seed@table
     keys <- .get_matrix_keycols(table)
     row_key <- keys$row_key
@@ -245,6 +271,7 @@ NULL
     if (x@seed@fill != 0) {
         stop("must be a zero-filled array")
     }
+    .check_gram_size(x, nrow(x), "crossprod")
     table <- x@seed@table
     keys <- .get_matrix_keycols(table)
     row_key <- keys$row_key

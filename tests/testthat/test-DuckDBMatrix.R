@@ -278,6 +278,19 @@ test_that("matrix multiplication works for DuckDBMatrix", {
     checkDuckDBMatrix(object, expected)
 })
 
+test_that("crossprod/tcrossprod self-join has an OOM size tripwire (LKT-59; R<->Python parity with scibis)", {
+    pqmat <- DuckDBMatrix(state_path, datacol = "value", row = "index1", col = "index2")
+    # Under the default safeguard a small matrix is well below the limit: no trip, a real result is returned.
+    expect_s4_class(crossprod(pqmat), "DuckDBMatrix")
+    expect_s4_class(tcrossprod(pqmat), "DuckDBMatrix")
+    # Lowering the limit trips the guard BEFORE the self-join runs -- the R twin of scibis's test, which
+    # monkeypatches _GRAM_PAIR_LIMIT to 1 so any matrix trips.
+    old <- options(DuckDBArray.gram_pair_limit = 1)
+    on.exit(options(old), add = TRUE)
+    expect_error(crossprod(pqmat), "does not scale")
+    expect_error(tcrossprod(pqmat), "does not scale")
+})
+
 test_that("matrix-matrix multiplication works for DuckDBMatrix", {
     names(dimnames(state.x77)) <- c("index1", "index2")
     pqmat <- DuckDBMatrix(state_path, datacol = "value",

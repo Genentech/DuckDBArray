@@ -1,3 +1,17 @@
+# DuckDBArray 0.9.18
+
+## Bug fixes
+
+- `crossprod()` and `tcrossprod()` on a `DuckDBMatrix` (the SQL self-join form,
+  with no second operand) now raise a clear error before the self-join can
+  exhaust memory, instead of silently OOMing on a large matrix. The self-join
+  emits roughly `nnz^2 / contracted_dim` intermediate row-pairs before the
+  `GROUP BY` can reduce them — quadratic and un-spillable at scale — so a size
+  estimate now trips a `stop()` with guidance (subset to highly variable genes,
+  or materialize with `as.matrix()`) above a safeguard of 5e8 pairs. The
+  threshold is overridable with `options(DuckDBArray.gram_pair_limit = )` on a
+  machine with more memory.
+
 # DuckDBArray 0.9.17
 
 ## Bug fixes
