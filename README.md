@@ -98,4 +98,4 @@ backend, see the **BiocDuckDB** package.
 
 ## License
 
-Apache License 2.0. Copyright Genentech, Inc.
+MIT License. Copyright Genentech, Inc., 2026.
