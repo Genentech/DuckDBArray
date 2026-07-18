@@ -153,6 +153,42 @@ test_that("extraction methods work as expected for a DuckDBArray", {
     checkDuckDBArray(object, expected)
 })
 
+test_that("coercion to sparse matrix classes works as expected for a DuckDBArray", {
+    # The fast one-query coercions build the sparse-matrix target directly from
+    # the COO (skipping the SVT_SparseArray round-trip); check they agree with the
+    # source matrix and with the default SVT-based route on a 2-D DuckDBArray.
+    names(dimnames(state.x77)) <- c("index1", "index2")
+    pqarray <- DuckDBArray(state_path, datacol = "value",
+                           keycols = lapply(dimnames(state.x77),
+                                            function(x) setNames(seq_along(x), x)),
+                           dimtbls = state_tables)
+
+    expect_s4_class(as(pqarray, "dgCMatrix"), "dgCMatrix")
+    expect_equivalent(as(pqarray, "dgCMatrix"), as(state.x77, "CsparseMatrix"))
+    # as(x, "CsparseMatrix") routes through the dgCMatrix method
+    expect_equivalent(as(pqarray, "CsparseMatrix"), as(state.x77, "CsparseMatrix"))
+    expect_equivalent(as(pqarray, "COO_SparseMatrix"), as(state.x77, "COO_SparseMatrix"))
+    expect_equivalent(as(pqarray, "COO_SparseArray"), as(state.x77, "COO_SparseArray"))
+    # the fast path agrees with the default SVT-based coercion
+    expect_equivalent(as(pqarray, "dgCMatrix"), as(as(pqarray, "SparseMatrix"), "dgCMatrix"))
+})
+
+test_that("sparse coercion handles an all-fill (empty) DuckDBArray", {
+    m <- matrix(0L, 12L, 6L,
+                dimnames = list(index1 = paste0("r", 1:12), index2 = paste0("c", 1:6)))
+    path <- file.path(tempfile(), "empty")
+    grid <- RegularArrayGrid(dim(m), dim(m))
+    writeCoordArray(m, path, grid = grid)
+    pqarray <- DuckDBArray(path, datacol = "value",
+                           keycols = lapply(dimnames(m), function(x) setNames(seq_along(x), x)),
+                           dimtbls = createDimTables(m, grid = grid))
+
+    got <- as(pqarray, "dgCMatrix")
+    expect_s4_class(got, "dgCMatrix")
+    expect_identical(length(got@x), 0L)
+    expect_equivalent(got, as(m, "CsparseMatrix"))
+})
+
 test_that("aperm and t methods work as expected for a DuckDBArray", {
     pqarray <- DuckDBArray(titanic_parquet, datacol = "fate", keycols = dimnames(titanic_array))
 

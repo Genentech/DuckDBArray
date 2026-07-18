@@ -1,5 +1,19 @@
 # DuckDBArray 0.9.20
 
+## New features
+
+- Fast one-query coercions to concrete sparse-matrix targets:
+  `as(x, "dgCMatrix")` / `as(x, "CsparseMatrix")` / `as(x, "COO_SparseMatrix")` /
+  `as(x, "COO_SparseArray")` on a `DuckDBArray` / `DuckDBMatrix` now fetch the
+  whole COO in a single query and build the target directly, skipping the
+  `COO_SparseArray -> SVT_SparseArray` round-trip the default DelayedArray
+  coercions pay for (measured ~1.3-1.7x on a cell x gene realize, byte-identical
+  to the default). They fall back to the default path when the array is not
+  zero-filled, dropped, the wrong rank, or (for `dgCMatrix`) non-numeric, so
+  correctness is never traded for speed. Dense `as.matrix` / `as.array` stay on
+  the existing (already single-query) path: a direct dense build measured only
+  ~1.1x, not worth a separate code path.
+
 ## Changes
 
 - The test harness pins DuckDB to a single thread

@@ -5,7 +5,6 @@
 \alias{matrixClass,DuckDBArray-method}
 \alias{DuckDBMatrix}
 \alias{[,DuckDBMatrix,ANY,ANY,ANY-method}
-\alias{coerce,DuckDBMatrix,COO_SparseMatrix-method}
 \title{DuckDBMatrix objects}
 \value{
 The \code{DuckDBMatrix()} constructor returns a DuckDBMatrix object;

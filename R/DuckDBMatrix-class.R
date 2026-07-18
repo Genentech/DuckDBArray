@@ -131,7 +131,6 @@
 #' @aliases DuckDBMatrix
 #'
 #' @aliases [,DuckDBMatrix,ANY,ANY,ANY-method
-#' @aliases coerce,DuckDBMatrix,COO_SparseMatrix-method
 #'
 #' @seealso
 #' \itemize{
@@ -210,7 +209,3 @@ setMethod("[", "DuckDBMatrix", function(x, i, j, ..., drop = TRUE) {
         replaceSlots(x, seed = seed, check = FALSE)
     }
 })
-
-#' @export
-#' @importClassesFrom SparseArray COO_SparseMatrix SparseMatrix
-setAs("DuckDBMatrix", "COO_SparseMatrix", function(from) as(from, "SparseMatrix"))

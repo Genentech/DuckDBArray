@@ -306,6 +306,39 @@ setReplaceMethod("dimnames", "DuckDBArraySeed", function(x, value) {
     }
 }
 
+# Collect the whole array of a DuckDBArraySeed as raw COO pieces in ONE query.
+# Mirrors the collection half of extract_sparse_array (same one-shot
+# as.data.frame + .match_int against the in-memory keycol level vectors, so no
+# extra DB round-trip), but returns the COO directly instead of building a
+# COO_SparseArray -> SVT_SparseArray. The fast coercion methods build their
+# concrete target (dgCMatrix / COO_SparseArray / COO_SparseMatrix) straight from
+# this, skipping the SVT intermediate the default DelayedArray coercions pay
+# for. Assumes an undropped seed (callers defer to the default coercion when
+# x@drop is TRUE). Returns list(nzcoo, nzdata, dim, dimnames); nzcoo holds
+# 1-based integer positions, one column per key dimension.
+.collectCOO <- function(x) {
+    index <- .extract_array_index(x, vector("list", nkey(x@table)))
+    dimnames <- lapply(index, function(y) names(y) %||% y)
+    df <- as.data.frame(x@table[dimnames, ], optional = TRUE,
+                        limit.rows = FALSE)
+    ndim <- length(dimnames)
+    nzcoo <- matrix(NA_integer_, nrow = nrow(df), ncol = ndim,
+                    dimnames = list(NULL, names(dimnames)))
+    for (j in seq_len(ndim)) {
+        nzcoo[, j] <- .match_int(df[[j + 1L]], index[[j]])
+    }
+    list(nzcoo = nzcoo, nzdata = df[[1L]],
+         dim = lengths(dimnames, use.names = FALSE), dimnames = dimnames)
+}
+
+# TRUE when the seed's fill is the zero of its column type, i.e. the sparse
+# fast paths are valid (same guard extract_sparse_array uses to choose the
+# sparse vs dense branch). FALSE => the array is not zero-filled, so a direct
+# nonzero-only build would be wrong and callers must defer to the default.
+.seedZeroFilled <- function(x) {
+    identical(vector(coltypes(x@table), 1L), x@fill)
+}
+
 #' @export
 #' @importFrom S4Arrays extract_array
 setMethod("extract_array", "DuckDBArraySeed", function(x, index) {

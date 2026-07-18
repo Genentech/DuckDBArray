@@ -12,6 +12,8 @@
 \alias{DuckDBArray}
 \alias{[,DuckDBArray,ANY,ANY,ANY-method}
 \alias{coerce,DuckDBArray,COO_SparseArray-method}
+\alias{coerce,DuckDBArray,COO_SparseMatrix-method}
+\alias{coerce,DuckDBArray,dgCMatrix-method}
 \alias{aperm,DuckDBArray-method}
 \alias{t,DuckDBArray-method}
 \title{DuckDBArray objects}
