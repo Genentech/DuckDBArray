@@ -1,3 +1,19 @@
+# DuckDBArray 0.9.20
+
+## Changes
+
+- The test harness pins DuckDB to a single thread
+  (`options(DuckDBDataFrame.threads = 1L)` in `setup.R`) so parallel
+  floating-point reductions (`sum` / `var_samp`) accumulate in a fixed order and
+  tight-tolerance expectations stay reproducible run-to-run. This is a
+  test-only change; real sessions use all cores.
+
+# DuckDBArray 0.9.19
+
+## Changes
+
+- Relicensed under the MIT License.
+
 # DuckDBArray 0.9.18
 
 ## Bug fixes

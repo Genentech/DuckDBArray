@@ -283,7 +283,7 @@ test_that("crossprod/tcrossprod self-join has an OOM size tripwire (LKT-59; R<->
     # Under the default safeguard a small matrix is well below the limit: no trip, a real result is returned.
     expect_s4_class(crossprod(pqmat), "DuckDBMatrix")
     expect_s4_class(tcrossprod(pqmat), "DuckDBMatrix")
-    # Lowering the limit trips the guard BEFORE the self-join runs -- the R twin of scibis's test, which
+    # Lowering the limit trips the guard BEFORE the self-join runs, which
     # monkeypatches _GRAM_PAIR_LIMIT to 1 so any matrix trips.
     old <- options(DuckDBArray.gram_pair_limit = 1)
     on.exit(options(old), add = TRUE)
