@@ -196,6 +196,32 @@ class(transformed)
 as.matrix(transformed[1:3, 1:3])
 ```
 
+## Realizing large results in blocks
+
+Most work never materializes the matrix: reductions and grouped statistics push
+down to SQL (see *Matrix statistics*), so they stay memory-bounded regardless of
+size. Whole-object coercions like `as.matrix()` or `as(x, "dgCMatrix")`, by
+contrast, build the **entire** result at once --- ideal when it fits, but not
+when it doesn't.
+
+When you need to consume a result too large for memory --- to feed a
+chunked/minibatch step, or to re-write it to another on-disk backend --- realize
+it a block at a time instead. Because a `DuckDBMatrix` is a
+`r Biocpkg("DelayedArray")`, the standard block machinery applies: `blockApply()`
+reads and processes the matrix one block at a time, and each block is a separate,
+**pruned** query (only that block's entries are read), so peak memory is bounded
+by a single block rather than the full result:
+
+```{r block-stream}
+# one block in memory at a time; each block is a separate, pruned query
+block_sums <- blockApply(mat, function(block) sum(block))
+sum(unlist(block_sums))
+```
+
+`realize(x, BACKEND = "HDF5Array")` uses the same block-streaming path to write a
+large result to another on-disk format without ever holding it whole, and
+`DelayedArray::setAutoBlockSize()` tunes how much is read per block.
+
 # N-dimensional arrays
 
 The same backend serves arrays of any dimension through `DuckDBArray()`; a
