@@ -65,10 +65,12 @@ function(max_dim, x, append, along, offset, ndim)
     }
     if (!is.numeric(max_dim) || length(max_dim) != ndim ||
         anyNA(max_dim) ||
-        !all(max_dim == as.integer(max_dim))) {
+        !all(max_dim == round(max_dim))) {
         stop("'max_dim' must be NULL or an integer vector of length ", ndim)
     }
-    max_dim <- as.integer(max_dim)
+    if (all(max_dim <= .Machine$integer.max)) {
+        max_dim <- as.integer(max_dim)
+    }
     if (any(max_dim < dim(x))) {
         j <- which(max_dim < dim(x))[1L]
         stop("'max_dim[", j, "]' (", max_dim[j],

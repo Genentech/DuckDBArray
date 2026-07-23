@@ -78,3 +78,42 @@ test_that("writeCoordArray,DuckDBArray infers schema from DuckDB column types", 
                     }, character(1L))
     expect_true(all(types == "double"))
 })
+
+# the DuckDB fast path must type the index columns from the pre-computed
+# idxtypes (max_dim-aware) rather than inferring from the remapped indices, so a
+# pinned-wide index (and, on a > 2^31 offset, a double index) does not narrow /
+# overflow differently from the R write path.
+.f4IndexType <- function(path, column) {
+    f <- list.files(path, pattern = "parquet$", recursive = TRUE,
+                    full.names = TRUE)[1L]
+    arrow::ParquetFileReader$create(f)$GetSchema()$
+        GetFieldByName(column)$type$ToString()
+}
+
+test_that("fast path types the index from max_dim (idxtypes honored, not inferred)", {
+    skip_if_not_installed("arrow")
+    names(dimnames(state.x77)) <- c("index1", "index2")
+    pqmat <- DuckDBMatrix(state_path, datacol = "value",
+                          keycols = lapply(dimnames(state.x77),
+                                           function(x) setNames(seq_along(x), x)))
+    path <- .newCoordPath("f4-maxdim")
+    # Row axis pinned to 70000 (int32) though its 50 values alone infer uint8.
+    writeCoordArray(pqmat, path,
+                    grid = RegularArrayGrid(dim(state.x77), c(10L, 4L)),
+                    max_dim = c(70000L, 8L))
+    expect_identical(.f4IndexType(path, "index1"), "int32")
+})
+
+test_that("fast path types the index from a > 2^31 max_dim (no float64/overflow)", {
+    skip_if_not_installed("arrow")
+    names(dimnames(state.x77)) <- c("index1", "index2")
+    pqmat <- DuckDBMatrix(state_path, datacol = "value",
+                          keycols = lapply(dimnames(state.x77),
+                                           function(x) setNames(seq_along(x), x)))
+    path <- .newCoordPath("f4-bigdim")
+    # Declare axis 2 larger than the 32-bit range.
+    writeCoordArray(pqmat, path,
+                    grid = RegularArrayGrid(dim(state.x77), c(10L, 4L)),
+                    max_dim = c(nrow(state.x77), 3e9 + ncol(state.x77)))
+    expect_identical(.f4IndexType(path, "index2"), "uint32")
+})

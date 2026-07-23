@@ -236,13 +236,21 @@ function(x, path, indexcols, datacol, arrowtype, ...)
 #' @importFrom DuckDBDataFrame arrowType
 .buildIndexMappings <-
 function(tbl, indexcols, keycols, grid = NULL, along = NULL, offset = 0L,
-         group_offset = 0L)
+         group_offset = 0L, idxtypes = NULL)
 {
     # For each dimension, create temp table: old_key → new_idx → grid_group
     # Returns list(mapping_tables = c(names), cleanup_sql = c(DROP statements))
 
     # Extract connection from tbl
     conn <- tbl$src$con
+
+    # Per-axis new_idx types resolved up front (max_dim-aware). Using these
+    # instead of inferring from the remapped indices keeps the new_idx column
+    # consistent with the R write path and, on a > 2^31 (append) offset, avoids
+    # the double offset degrading to float64 -> INTEGER and overflowing.
+    if (!is.null(idxtypes)) {
+        idxtypes <- .resolveArrowTypeList(idxtypes)
+    }
 
     mapping_tables <- character(length(indexcols))
     cleanup_sql <- character(length(indexcols))
@@ -267,9 +275,17 @@ function(tbl, indexcols, keycols, grid = NULL, along = NULL, offset = 0L,
         temp_name <- sprintf("temp_idxmap_%s_%s", col, temp_suffix)
         mapping_tables[j] <- temp_name
 
-        # Determine optimal integer types using existing helpers
+        # Determine optimal integer types using existing helpers. The new_idx
+        # type is taken from the pre-resolved per-axis idxtypes when available
+        # (max_dim-aware, and correct for a > 2^31 offset that makes the
+        # remapped indices a double); otherwise inferred from the data.
         old_key_type <- arrowType(old_keys)
-        new_idx_type <- arrowType(new_indices)
+        new_idx_type <- if (!is.null(idxtypes) && length(idxtypes) >= j &&
+                            !is.null(idxtypes[[j]])) {
+            idxtypes[[j]]
+        } else {
+            arrowType(new_indices)
+        }
         grid_group_type <- arrowType(grid_groups)
 
         # Convert Arrow types to DuckDB type names
@@ -315,7 +331,8 @@ function(x, path, indexcols, datacol, grid, grid_suffix, idxtypes, arrowtype,
     # The grid_group column is computed using S4Arrays::mapToGrid
     mappings_result <- .buildIndexMappings(tbl, indexcols, keycols, grid = grid,
                                            along = along, offset = offset,
-                                           group_offset = group_offset)
+                                           group_offset = group_offset,
+                                           idxtypes = idxtypes)
     mappings <- mappings_result[["mapping_tables"]]
 
     # Setup cleanup handler for mapping tables

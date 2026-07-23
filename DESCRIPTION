@@ -1,6 +1,6 @@
 Package: DuckDBArray
-Version: 0.99.00
-Date: 2026-07-18
+Version: 0.99.1
+Date: 2026-07-22
 Title: DuckDB-Backed DelayedArray Implementation
 Description:
     Provides DuckDB-backed implementations of DelayedArray and DelayedMatrix

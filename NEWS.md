@@ -1,3 +1,20 @@
+# DuckDBArray 0.99.1
+
+## Bug fixes
+
+- The DuckDB fast write path now types the coordinate-index columns from the
+  pre-computed, `max_dim`-aware `idxtypes` (`.buildIndexMappings()`) instead of
+  inferring them from the remapped indices. Previously a `> 2^31` along-axis
+  offset made the remapped indices a double, which inferred `float64` and
+  degraded to a DuckDB `INTEGER` temp column that overflowed; and an append part
+  could narrow differently from part 0. The index type now matches the R write
+  path and is consistent across parts.
+
+- `writeCoordArray()` accepts a whole-number `max_dim` beyond the 32-bit integer
+  range (a coordinate axis larger than ~2.1e9). The validator previously coerced
+  `max_dim` via `as.integer()`, overflowing such a dimension to `NA`; it now
+  validates integrality without coercion and keeps within-32-bit dims as integer.
+
 # DuckDBArray 0.9.20
 
 ## New features
