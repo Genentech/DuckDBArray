@@ -1,3 +1,13 @@
+# DuckDBArray 0.99.2
+
+## Bug fixes
+
+- The DuckDB fast-path append now writes new parts into an existing
+  hive-partitioned dataset (via the DuckDB `APPEND` copy option) instead of
+  failing with "Directory ... is not empty". A second `writeCoordArray(...,
+  append = TRUE)` slab is preserved alongside the first, and the combined
+  dataset round-trips; previously the fast path supported only a fresh write.
+
 # DuckDBArray 0.99.1
 
 ## Bug fixes

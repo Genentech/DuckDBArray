@@ -117,3 +117,50 @@ test_that("fast path types the index from a > 2^31 max_dim (no float64/overflow)
                     max_dim = c(nrow(state.x77), 3e9 + ncol(state.x77)))
     expect_identical(.f4IndexType(path, "index2"), "uint32")
 })
+
+# the DuckDB fast-path append (COPY ... PARTITION_BY into an existing hive
+# dataset) must write new files alongside the existing parts (via the APPEND
+# option) instead of failing "directory not empty".
+test_that("fast path append round-trips a second slab (F9)", {
+    skip_if_not_installed("arrow")
+    names(dimnames(state.x77)) <- c("index1", "index2")
+    keys <- lapply(dimnames(state.x77), function(x) setNames(seq_along(x), x))
+    pqmat <- DuckDBMatrix(state_path, datacol = "value", keycols = keys)
+    slab1 <- pqmat[, 1:4]
+    slab2 <- pqmat[, 5:8]
+
+    path <- .newCoordPath("f9-append")
+    g1 <- RegularArrayGrid(dim(slab1), c(25L, 1L))
+    g2 <- RegularArrayGrid(dim(slab2), c(25L, 1L))
+    writeCoordArray(slab1, path, grid = g1)
+    writeCoordArray(slab2, path, grid = g2, append = TRUE, along = 2L,
+                    offset = ncol(slab1), group_offset = dim(g1)[2L])
+
+    tbl <- as.data.frame(arrow::open_dataset(path) |> dplyr::collect())
+    combined <- state.x77[, 1:8]
+    expect_equal(.rebuildMatrixFromCoord(tbl, combined), combined)
+})
+
+test_that("fast path append past 2^31 keeps the index wide + exact (F9 + F4)", {
+    skip_if_not_installed("arrow")
+    names(dimnames(state.x77)) <- c("index1", "index2")
+    keys <- lapply(dimnames(state.x77), function(x) setNames(seq_along(x), x))
+    pqmat <- DuckDBMatrix(state_path, datacol = "value", keycols = keys)
+    slab1 <- pqmat[, 1:4]
+    slab2 <- pqmat[, 5:8]
+
+    path <- .newCoordPath("f9-bigappend")
+    big <- 3e9
+    g1 <- RegularArrayGrid(dim(slab1), c(25L, 1L))
+    g2 <- RegularArrayGrid(dim(slab2), c(25L, 1L))
+    md <- c(nrow(state.x77), big + ncol(state.x77))
+    writeCoordArray(slab1, path, grid = g1, max_dim = md)
+    writeCoordArray(slab2, path, grid = g2, append = TRUE, along = 2L,
+                    offset = big, group_offset = dim(g1)[2L], max_dim = md)
+
+    expect_identical(.f4IndexType(path, "index2"), "uint32")
+    tbl <- as.data.frame(arrow::open_dataset(path) |> dplyr::collect())
+    expect_false(anyNA(tbl$index2))
+    expect_true(max(tbl$index2) > .Machine$integer.max)     # appended slab past 2^31
+    expect_equal(nrow(tbl), sum(state.x77[, 1:8] != 0))     # every entry preserved
+})

@@ -445,6 +445,7 @@ function(x,
                                                     along = along,
                                                     offset = offset,
                                                     group_offset = group_offset,
+                                                    append = append,
                                                     ...)
     }
 

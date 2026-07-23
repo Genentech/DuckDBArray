@@ -13,7 +13,8 @@
 #' @importFrom DuckDBDataFrame buildParquetCopySQL quoteSQLColumns
 .buildCopyToSQL <-
 function(tbl, indexcols, datacol, target_path, where_clause = NULL,
-         mapping_tables = NULL, grid_group = NULL, partition_by = NULL, grid_suffix = "_group")
+         mapping_tables = NULL, grid_group = NULL, partition_by = NULL,
+         grid_suffix = "_group", append = FALSE)
 {
     conn <- tbl$src$con
     include_grid_groups <- !is.null(partition_by) && partition_by
@@ -54,7 +55,8 @@ function(tbl, indexcols, datacol, target_path, where_clause = NULL,
         base_query, target_path,
         order_cols = order_cols,
         partition_by = partition_cols,
-        row_group_size = 491520L)
+        row_group_size = 491520L,
+        append = append)
 }
 
 ### Build remapping JOIN clauses
@@ -319,7 +321,7 @@ function(tbl, indexcols, keycols, grid = NULL, along = NULL, offset = 0L,
 #' @importFrom DuckDBDataFrame dbconn tblconn
 .writeDuckDBArrayPartitionedWithPartitionBy <-
 function(x, path, indexcols, datacol, grid, grid_suffix, idxtypes, arrowtype,
-         along = NULL, offset = 0L, group_offset = 0L, ...)
+         along = NULL, offset = 0L, group_offset = 0L, append = FALSE, ...)
 {
     # Extract components from DuckDBArray once
     seed <- x@seed
@@ -357,7 +359,8 @@ function(x, path, indexcols, datacol, grid, grid_suffix, idxtypes, arrowtype,
         mapping_tables = mappings,
         grid_group = NULL,
         partition_by = TRUE,
-        grid_suffix = grid_suffix
+        grid_suffix = grid_suffix,
+        append = append
     )
 
     # Execute single COPY TO - DuckDB handles all partitioning internally
