@@ -10,11 +10,12 @@
 
 ### Build COPY TO SQL with optional remapping
 #' @importFrom dbplyr sql_render
-#' @importFrom DuckDBDataFrame buildParquetCopySQL quoteSQLColumns
+#' @importFrom DuckDBDataFrame buildParquetCopySQL clusterOrderSQL
+#' @importFrom DuckDBDataFrame quoteSQLColumns
 .buildCopyToSQL <-
 function(tbl, indexcols, datacol, target_path, where_clause = NULL,
          mapping_tables = NULL, grid_group = NULL, partition_by = NULL,
-         grid_suffix = "_group", append = FALSE)
+         grid_suffix = "_group", cluster_by = NULL, append = FALSE)
 {
     conn <- tbl$src$con
     include_grid_groups <- !is.null(partition_by) && partition_by
@@ -49,6 +50,14 @@ function(tbl, indexcols, datacol, target_path, where_clause = NULL,
         quoteSQLColumns(conn, paste0(indexcols, grid_suffix))
     } else {
         NULL
+    }
+
+    if (!is.null(cluster_by)) {
+        avail <- c(indexcols, datacol,
+                   if (include_grid_groups) paste0(indexcols, grid_suffix))
+        base_query <- sprintf("SELECT * FROM (%s) AS _co", base_query)
+        order_cols <- clusterOrderSQL(conn, base_query, cluster_by,
+                                      available = avail)
     }
 
     buildParquetCopySQL(
@@ -133,7 +142,7 @@ function(tbl, indexcols, datacol, target_path, where_clause = NULL,
 #' @importFrom DBI dbExecute
 #' @importFrom DuckDBArray dbconn tblconn
 .writeDuckDBArraySingle <-
-function(x, path, indexcols, datacol, arrowtype, ...)
+function(x, path, indexcols, datacol, arrowtype, cluster_by = NULL, ...)
 {
     # Extract components from DuckDBArray
     seed <- x@seed
@@ -156,7 +165,8 @@ function(x, path, indexcols, datacol, arrowtype, ...)
     })
 
     sql <- .buildCopyToSQL(tbl, indexcols, datacol, target,
-                           where_clause = NULL, mappings)
+                           where_clause = NULL, mappings,
+                           cluster_by = cluster_by)
     dbExecute(conn, sql)
 
     invisible(NULL)
@@ -321,7 +331,8 @@ function(tbl, indexcols, keycols, grid = NULL, along = NULL, offset = 0L,
 #' @importFrom DuckDBDataFrame dbconn tblconn
 .writeDuckDBArrayPartitionedWithPartitionBy <-
 function(x, path, indexcols, datacol, grid, grid_suffix, idxtypes, arrowtype,
-         along = NULL, offset = 0L, group_offset = 0L, append = FALSE, ...)
+         along = NULL, offset = 0L, group_offset = 0L, append = FALSE,
+         cluster_by = NULL, ...)
 {
     # Extract components from DuckDBArray once
     seed <- x@seed
@@ -360,6 +371,7 @@ function(x, path, indexcols, datacol, grid, grid_suffix, idxtypes, arrowtype,
         grid_group = NULL,
         partition_by = TRUE,
         grid_suffix = grid_suffix,
+        cluster_by = cluster_by,
         append = append
     )
 

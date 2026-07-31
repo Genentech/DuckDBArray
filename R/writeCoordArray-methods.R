@@ -221,6 +221,13 @@ function(x, path, indexcols, datacol, grid, grid_suffix,
 #' partition directories do not collide with existing ones. Typically the
 #' total number of partition groups already written along \code{along} by
 #' previous calls. Defaults to \code{0L}.
+#' @param cluster_by Optional within-partition row ordering for the DuckDBArray
+#' fast path: a \code{\link[DuckDBDataFrame]{zorder}()} / \code{hilbert()} spec
+#' or a character vector of index columns (e.g. one dimension's index to cluster
+#' the COO on that axis, tightening its zonemaps so a range/point query on that
+#' axis prunes row groups). Columns refer to \code{indexcols} / \code{datacol}.
+#' Default \code{NULL} keeps the existing index ordering (output
+#' byte-identical). A faithful reorder only; the COO is order-agnostic on read.
 #' @param ... Additional arguments to pass to \code{arrow::write_dataset}.
 #' Note that \code{existing_data_behavior} defaults to \code{"error"} (rather
 #' than arrow's default of \code{"overwrite_or_ignore"}) so that a re-run
@@ -372,6 +379,7 @@ function(x,
          along = NULL,
          offset = 0L,
          group_offset = 0L,
+         cluster_by = NULL,
          ...)
 {
     # DuckDBArray fast-path using SQL COPY TO
@@ -432,6 +440,7 @@ function(x,
                                 indexcols = indexcols,
                                 datacol = datacol,
                                 arrowtype = schema_arrow$value,
+                                cluster_by = cluster_by,
                                 ...)
     } else {
         .writeDuckDBArrayPartitionedWithPartitionBy(x,
@@ -446,6 +455,7 @@ function(x,
                                                     offset = offset,
                                                     group_offset = group_offset,
                                                     append = append,
+                                                    cluster_by = cluster_by,
                                                     ...)
     }
 

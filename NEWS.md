@@ -1,3 +1,19 @@
+# DuckDBArray 0.99.3
+
+## New features
+
+- `writeCoordArray()` / `writeParquet()` for `DuckDBArray` gain a `cluster_by`
+  argument: an optional within-partition row ordering (a
+  `DuckDBDataFrame::zorder()` / `hilbert()` spec, or a character vector of index
+  columns) lowered to the `COPY TO` `ORDER BY` via
+  `DuckDBDataFrame::clusterOrderSQL()`. Clustering the COO on a chosen axis (e.g.
+  `cluster_by = "<sample index>"`) tightens that axis's row-group zonemaps so a
+  range or point query on it prunes row groups, a faithful reorder (the COO is
+  order-agnostic on read; no schema, contract, or reader change). Default `NULL`
+  keeps the existing index ordering, so output is byte-identical and existing
+  goldens are unaffected. Reuses DuckDBDataFrame's single Morton/Hilbert
+  generator rather than re-deriving it.
+
 # DuckDBArray 0.99.2
 
 ## Bug fixes

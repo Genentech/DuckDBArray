@@ -52,6 +52,7 @@ writeCoordArray(
   along = NULL,
   offset = 0L,
   group_offset = 0L,
+  cluster_by = NULL,
   ...
 )
 }
@@ -151,6 +152,14 @@ Defaults to \code{getAutoBPPARAM()}. Note: The \code{DuckDBArray} method
 does not support this parameter because DuckDB connections are not thread-safe
 for concurrent execution. The \code{DuckDBArray} method uses sequential
 execution and relies on DuckDB's internal parallelism for performance.}
+
+\item{cluster_by}{Optional within-partition row ordering for the DuckDBArray
+fast path: a \code{\link[DuckDBDataFrame]{zorder}()} / \code{hilbert()} spec
+or a character vector of index columns (e.g. one dimension's index to cluster
+the COO on that axis, tightening its zonemaps so a range/point query on that
+axis prunes row groups). Columns refer to \code{indexcols} / \code{datacol}.
+Default \code{NULL} keeps the existing index ordering (output
+byte-identical). A faithful reorder only; the COO is order-agnostic on read.}
 }
 \value{
 Called for its side effect of writing \code{x} to \code{path} as
