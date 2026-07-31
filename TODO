@@ -1,0 +1,21 @@
+o writeCoordArray() / writeParquet(<DuckDBArray>) should let the producer choose
+  the within-partition row ordering (a cluster_by argument), the way the flat
+  writers already do via zorder() / hilbert() / lexicographic cluster specs in
+  DuckDBDataFrame (R/parquet-io-cluster.R). Today the DuckDB COO path
+  hard-orders by rev(indexcols) (R/writeCoordArray-duckdb.R), the arrow path by
+  nzwhich order, so a producer cannot ship, e.g., a COO clustered on the sample
+  axis (or the feature axis). This is a FAITHFUL reorder: COO is order-agnostic
+  on read, so no datapackage.json descriptor change and no scibis reader change;
+  only regenerate any byte-exact goldens.
+  - Lower cluster_by through the existing .clusterOrderSQL into the COO COPY
+    builder's order_cols.
+  - Motivation: benchmarking on a large spatial atlas showed that clustering the
+    COO on the sample axis is a pure ordering change that makes a sample-range
+    nnz count several-fold faster. The win is release-eligible and faithful;
+    only the ordering knob is missing.
+
+o Row-group size on the COO writer is already 491520 (240 x the 2048
+  STANDARD_VECTOR_SIZE) on both the DuckDB path (R/writeCoordArray-duckdb.R) and
+  the arrow path (R/writeCoordArray.R), from the benchmark in this package. Keep
+  this as the shared convention; DuckDBDataFrame's lazy export path does NOT yet
+  match it (see DuckDBDataFrame/TODO).
