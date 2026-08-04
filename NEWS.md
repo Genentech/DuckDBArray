@@ -1,3 +1,14 @@
+# DuckDBArray 0.99.4
+
+## Documentation
+
+- Added `URL` and `BugReports` fields to DESCRIPTION.
+- Added a package-level man page (`?DuckDBArray`).
+- Removed the redundant `library(BiocStyle)` call from the vignettes (the
+  `BiocStyle::html_document` output and `::`-qualified helpers apply the style
+  without loading the package). Applied suite-wide for consistency with the
+  Bioconductor review of DuckDBDataFrame.
+
 # DuckDBArray 0.99.3
 
 ## New features

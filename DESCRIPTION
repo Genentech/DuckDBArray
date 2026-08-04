@@ -1,6 +1,6 @@
 Package: DuckDBArray
-Version: 0.99.3
-Date: 2026-07-31
+Version: 0.99.4
+Date: 2026-08-04
 Title: DuckDB-Backed DelayedArray Implementation
 Description:
     Provides DuckDB-backed implementations of DelayedArray and DelayedMatrix
@@ -14,6 +14,8 @@ Authors@R:
         person("Genentech, Inc.", role="cph")
     )
 License: MIT + file LICENSE
+URL: https://github.com/Genentech/DuckDBArray
+BugReports: https://github.com/Genentech/DuckDBArray/issues
 Depends:
     R (>= 4.6.0),
     methods,
@@ -62,6 +64,7 @@ Collate:
     'DuckDBTable-matrixStats.R'
     'DuckDBArraySeed-matrixStats.R'
     'DuckDBArray-matrixStats.R'
+    'DuckDBArray-package.R'
     'DuckDBArray-utils.R'
     'DuckDBMatrix-class.R'
     'DuckDBMatrix-utils.R'
