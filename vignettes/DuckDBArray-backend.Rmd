@@ -53,7 +53,7 @@ library(DelayedArray)
 
 The seed holds no data; it holds a `DuckDBTable` (from
 `r Biocpkg("DuckDBDataFrame")`) describing a Parquet file in **coordinate (COO)**
-form --- one or more *key columns* giving each entry's position and a single
+form, one or more *key columns* giving each entry's position and a single
 *data column* giving its value. DelayedArray calls the seed's `extract_array()` /
 `extract_sparse_array()` methods to materialize only the blocks an operation
 needs; everything else (subsetting, arithmetic, `log1p()`, ...) is recorded lazily
@@ -124,8 +124,8 @@ seedClass <- class(seed(arr))
 seedClass
 ```
 
-From here the full `r Biocpkg("DelayedArray")` API applies unchanged --- lazy
-arithmetic, subsetting, `blockApply()`, `realize()` --- because `DuckDBArray`
+From here the full `r Biocpkg("DelayedArray")` API applies unchanged, lazy
+arithmetic, subsetting, `blockApply()`, `realize()`, because `DuckDBArray`
 *is* a `DelayedArray`.
 
 # From array operations to SQL
@@ -151,7 +151,7 @@ rowSums(mat)
 ```
 
 Operations without an aggregation form (element-wise math, subsetting) fall back
-to DelayedArray's lazy machinery over `extract_array()` --- correct for any
+to DelayedArray's lazy machinery over `extract_array()`, correct for any
 backend, and cheap because the seed reads only the needed blocks.
 
 # Grid partitioning
@@ -182,7 +182,7 @@ as.array(arr[1:2, 1:2, 1])
 ```
 
 Because the on-disk representation is plain Parquet, the same files are readable
-outside R (Python, Julia, DuckDB itself, cloud query engines) --- a property the
+outside R (Python, Julia, DuckDB itself, cloud query engines), a property the
 `r Biocpkg("BiocDuckDB")` package relies on for its language-neutral on-disk
 experiment format.
 

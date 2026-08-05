@@ -26,7 +26,7 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
 
 Modern single-cell and genomic assays routinely produce matrices that do not fit
 in memory. The 10x Genomics 1.3 million brain cell dataset, for example, is a
-`27,998 x 1,306,127` matrix of UMI counts --- over 36 billion entries, or more
+`27,998 x 1,306,127` matrix of UMI counts, over 36 billion entries, or more
 than 130 GB as an ordinary dense integer matrix. Even stored sparsely, datasets
 like this are awkward to hold in an R session alongside the intermediate objects
 an analysis creates.
@@ -34,7 +34,7 @@ an analysis creates.
 `r Biocpkg("DelayedArray")` solves half of this problem: it lets an array live
 *on disk* behind the ordinary R array API, so `dim()`, `[`, `rowSums()`, and
 arithmetic all work without loading the data into memory. What remains is the
-choice of **backend** --- the on-disk representation that actually stores and
+choice of **backend**, the on-disk representation that actually stores and
 serves the data. `r Biocpkg("HDF5Array")` provides an HDF5 backend and
 `r Biocpkg("TileDBArray")` a TileDB one.
 
@@ -45,7 +45,7 @@ treats it as a *database table* and lets DuckDB's SQL engine do the work: a
 `rowSums()` becomes a `SUM ... GROUP BY`, a `rowVars()` a `VAR_SAMP`, and the
 query planner handles memory and multi-threading for you. As with any
 `r Biocpkg("DelayedArray")` backend, **none of these operations load the matrix
-into memory** --- they read only what they need from disk.
+into memory**, they read only what they need from disk.
 
 This vignette is a practical introduction: how to create a `DuckDBMatrix`, how
 the familiar Bioconductor array operations behave on it, and when the DuckDB
@@ -163,7 +163,7 @@ rowVars(mat)[1:5]
 colSds(mat)[1:5]
 ```
 
-Two helpers are added for count-based feature selection --- `rowNnzs()` /
+Two helpers are added for count-based feature selection, `rowNnzs()` /
 `colNnzs()` count non-zero entries (detection rate), and `rowDeviances()`
 computes binomial/Poisson deviance for highly-variable-gene selection
 ([Townes et al. 2019](https://doi.org/10.1186/s13059-019-1861-6)):
@@ -200,11 +200,11 @@ as.matrix(transformed[1:3, 1:3])
 Most work never materializes the matrix: reductions and grouped statistics push
 down to SQL (see *Matrix statistics*), so they stay memory-bounded regardless of
 size. Whole-object coercions like `as.matrix()` or `as(x, "dgCMatrix")`, by
-contrast, build the **entire** result at once --- ideal when it fits, but not
+contrast, build the **entire** result at once, ideal when it fits, but not
 when it doesn't.
 
-When you need to consume a result too large for memory --- to feed a
-chunked/minibatch step, or to re-write it to another on-disk backend --- realize
+When you need to consume a result too large for memory, to feed a
+chunked/minibatch step, or to re-write it to another on-disk backend, realize
 it a block at a time instead. Because a `DuckDBMatrix` is a
 `r Biocpkg("DelayedArray")`, the standard block machinery applies: `blockApply()`
 reads and processes the matrix one block at a time, and each block is a separate,
@@ -246,7 +246,7 @@ DuckDBArray is a good fit when:
 - the matrix is **larger than memory**, or you want to keep memory free for the
   rest of the analysis;
 - the data is **sparse** (e.g. single-cell counts, scATAC-seq accessibility);
-- your workload is dominated by **columnar aggregations** --- row/column
+- your workload is dominated by **columnar aggregations**, row/column
   summaries, grouped statistics, QC and feature selection;
 - the data already lives on disk as **Parquet**, or benefits from a format that
   other tools (Python, Julia, cloud query engines) can read directly.
@@ -256,7 +256,7 @@ in-memory `dgCMatrix` is hard to beat for small data), or for workloads built
 around dense linear algebra or heavy random element access.
 
 For a head-to-head comparison with in-memory, `r Biocpkg("HDF5Array")`, and
-`r Biocpkg("TileDBArray")` backends --- including where each one wins --- see the
+`r Biocpkg("TileDBArray")` backends, including where each one wins, see the
 *Benchmarking DuckDBArray* vignette. To understand or extend the backend itself,
 see *Implementing the DuckDBArray backend*.
 

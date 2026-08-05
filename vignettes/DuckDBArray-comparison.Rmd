@@ -29,11 +29,11 @@ like an ordinary matrix while keeping its data on disk. This vignette asks the
 follow-up question: **what does that cost, and what does it buy?** We compare the
 DuckDB backend against three alternatives on real single-cell data:
 
-1. an in-memory sparse matrix (`r CRANpkg("Matrix")`'s `dgCMatrix`) --- the
+1. an in-memory sparse matrix (`r CRANpkg("Matrix")`'s `dgCMatrix`): the
    fastest option when data fits in RAM, and our baseline;
-2. `r Biocpkg("HDF5Array")` --- the long-standing Bioconductor backend for
+2. `r Biocpkg("HDF5Array")`: the long-standing Bioconductor backend for
    out-of-memory single-cell analysis;
-3. `r Biocpkg("TileDBArray")` --- a tile-based on-disk backend.
+3. `r Biocpkg("TileDBArray")`: a tile-based on-disk backend.
 
 The headline results below were produced **offline** on the full 10x Genomics
 1.3 million brain-cell dataset (see [Benchmark setup]) and are rendered here from
@@ -43,7 +43,7 @@ can see the mechanics end to end.
 
 The short version: for the columnar aggregations that dominate single-cell QC and
 feature selection, **DuckDB matches an in-memory sparse matrix while staying on
-disk, and clearly beats the other disk-backed backends** --- without block-size
+disk, and clearly beats the other disk-backed backends**, without block-size
 tuning.
 
 # What DuckDBArray optimizes
@@ -100,7 +100,7 @@ all.equal(unname(rowDeviances(m, family = "binomial")),
           unname(rowDeviances(mat, family = "binomial")))
 ```
 
-At this size the in-memory matrix is faster --- there is nothing to gain from
+At this size the in-memory matrix is faster, there is nothing to gain from
 going to disk. The advantage appears at scale, which is what the offline
 benchmark measures.
 
@@ -110,7 +110,7 @@ The full benchmark uses the 10x Genomics 1.3 million brain-cell dataset
 (`27,998 x 1,306,127` UMI counts), the same dataset used by the
 `r Biocpkg("HDF5Array")` performance vignette and available through
 `r Biocpkg("ExperimentHub")` (accession `EH1039`). The headline table uses a
-200,000-cell subset --- the same size the `r Biocpkg("HDF5Array")` performance
+200,000-cell subset, the same size the `r Biocpkg("HDF5Array")` performance
 vignette headlines, so the numbers are directly comparable; `inst/scripts/` can
 run other cell counts.
 
@@ -126,12 +126,12 @@ its best on the **same core budget**:
   threading, so the benchmark drives them with **`BiocParallel::SnowParam()`**
   (separate processes, no fork), initializes each worker (a fresh TileDB context;
   HDF5 file locking disabled), **budgets TileDB's internal threads across workers**
-  to avoid oversubscription, and tunes the block size --- the standard levers from
+  to avoid oversubscription, and tunes the block size, the standard levers from
   the `r Biocpkg("HDF5Array")` and `r Biocpkg("TileDBArray")` playbooks.
 - **dgCMatrix** is single-threaded (the in-memory baseline).
 
 To keep this transparent we report **two regimes**: *single-threaded* (one core per
-backend --- per-core efficiency, matching the `r Biocpkg("HDF5Array")` vignette's
+backend, per-core efficiency, matching the `r Biocpkg("HDF5Array")` vignette's
 own methodology) and *best effort* (every backend given the full core budget,
 configured as above). The exact per-backend configuration is recorded with the
 results and shown beneath the tables.
@@ -173,7 +173,7 @@ if (is.null(res)) {
   `r Biocpkg("TileDBArray")` speeds up well (`rowVars` ~5x, `rowDeviances` ~4x);
   `r Biocpkg("HDF5Array")`'s gains are smaller and operation-dependent (~7x on
   `rowNnzs`, ~2x on `rowDeviances`, but essentially none on `rowVars`), reflecting
-  contention on its single file. DuckDB shows no such unevenness --- it scales
+  contention on its single file. DuckDB shows no such unevenness, it scales
   ~11--13x across every operation, automatically. Compare the two regime tables.
 
 # Backend comparison
@@ -188,12 +188,12 @@ if (is.null(res)) {
 
 ## When to use each
 
-- **`dgCMatrix`** --- data fits comfortably in RAM; the fastest choice for small
+- **`dgCMatrix`**: data fits comfortably in RAM; the fastest choice for small
   and mid-size matrices.
-- **`r Biocpkg("HDF5Array")`** --- native 10x/HDF5 inputs; mature and widely used.
-- **`r Biocpkg("TileDBArray")`** --- when TileDB features (versioning, cloud
+- **`r Biocpkg("HDF5Array")`**: native 10x/HDF5 inputs; mature and widely used.
+- **`r Biocpkg("TileDBArray")`**: when TileDB features (versioning, cloud
   arrays) are wanted.
-- **`DuckDBMatrix`** --- larger-than-memory data dominated by columnar
+- **`DuckDBMatrix`**: larger-than-memory data dominated by columnar
   aggregations, when you want near in-memory speed without block tuning, or when
   the Parquet files are shared with non-R tooling.
 
@@ -202,9 +202,9 @@ if (is.null(res)) {
 `inst/scripts/` reproduces these numbers on your hardware and extends them to
 larger cell counts:
 
-- `run_vignette_benchmarks.R` --- the operations timed above; writes
+- `run_vignette_benchmarks.R`: the operations timed above; writes
   `benchmark_results.rds`.
-- `normalize_and_PCA.R`, `run_comparison.sh` --- the fuller normalization/PCA
+- `normalize_and_PCA.R`, `run_comparison.sh`: the fuller normalization/PCA
   sweep, comparable to the `r Biocpkg("HDF5Array")` performance vignette.
 
 See `inst/scripts/README.md` for details. For higher-level scuttle/scran

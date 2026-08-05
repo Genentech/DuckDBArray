@@ -1,3 +1,9 @@
+# DuckDBArray 0.99.5
+
+## Documentation
+
+- Replaced em dashes with commas or colons in the vignettes.
+
 # DuckDBArray 0.99.4
 
 ## Documentation
