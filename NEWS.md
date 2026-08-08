@@ -1,3 +1,46 @@
+# DuckDBArray 0.99.6
+
+## Bug fixes
+
+- Removed two duplicate `switch()` case labels ("integer", "double") in
+  `.duckdbTypeToArrow()` (`writeCoordArray-types.R`); R's `switch()` only ever
+  matches the first occurrence of a label, so the later entries were dead code.
+  Both duplicates mapped to the same value as their first occurrence, so this
+  is not a behavior change.
+- Removed the unused internal helper `.buildTempTableFilter()`.
+- `sapply()` calls in `R/DuckDBTable-matrixStats.R` are replaced with
+  `lapply()` (where the result's names already came from a named input) or
+  `setNames(lapply(...), ...)` (where `sapply()`'s auto-naming of an unnamed
+  character-vector input was load-bearing), resolving the corresponding
+  `BiocCheck` NOTE with no behavior change.
+- The multi-line `paste0()`-built format string in `.check_gram_size()`'s
+  error message (`R/DuckDBMatrix-utils.R`) is replaced with two `sprintf()`/
+  literal arguments passed directly to `stop()`, which concatenates its `...`
+  arguments natively; this resolves the "avoid paste in condition signals"
+  NOTE and produces byte-identical message text (verified).
+
+## Documentation
+
+- Benchmarking vignette: the `rowVars()` comparison against a plain
+  `dgCMatrix` (which dispatches through `MatrixGenerics` to a method supplied
+  by `sparseMatrixStats` or `DelayedMatrixStats`) is now gated on one of those
+  optional packages being installed, so the vignette no longer errors when
+  neither is available. `rowDeviances()`, DuckDBArray's own generic, is
+  unaffected and always runs.
+- Introduction vignette: added a section on introspecting a Parquet file's
+  columns and key-column value ranges with `arrow::open_dataset()` before
+  constructing a `DuckDBArray`/`DuckDBMatrix`, for the case where the file was
+  produced by another tool and the key structure isn't already known.
+
+## Testing
+
+- Loading the `airway` Suggests package in `tests/testthat/setup.R` is now
+  conditional, and the `test_that()` blocks that use `airway_counts` /
+  `airway_counts_path` call `skip_if_not_installed("airway")`. Previously the
+  unconditional `data(airway, ...)` call in `setup.R` would fail and abort the
+  entire test suite (not just the airway-dependent tests) when `airway` was
+  not installed.
+
 # DuckDBArray 0.99.5
 
 ## Documentation

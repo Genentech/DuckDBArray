@@ -239,6 +239,28 @@ dim(arr)
 arr[1:2, 1:2, 1]
 ```
 
+## Introspecting a Parquet file you did not write
+
+The example above already knows `keycols` because it wrote `arr_path` itself.
+Given a COO Parquet file produced by another tool, use `r CRANpkg("arrow")` to
+find the key and data column names and the extent of each dimension before
+constructing a `DuckDBArray`: the schema names the columns and their types, and
+the distinct values of each key column give that dimension's levels.
+
+```{r introspect}
+## which columns exist, and their types
+open_dataset(arr_path)$schema
+
+## the distinct values of a key column define that dimension's levels
+open_dataset(arr_path) |>
+    dplyr::distinct(i) |>
+    dplyr::arrange(i) |>
+    dplyr::collect()
+```
+
+Repeating the second step for each key column recovers the full `keycols` list
+needed to construct the `DuckDBArray`/`DuckDBMatrix`.
+
 # When to use DuckDBArray
 
 DuckDBArray is a good fit when:

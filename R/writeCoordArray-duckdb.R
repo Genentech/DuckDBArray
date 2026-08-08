@@ -173,58 +173,6 @@ function(x, path, indexcols, datacol, arrowtype, cluster_by = NULL, ...)
 }
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-### Temporary table utilities
-###
-
-### Build temp table filter (IN clause)
-#' @importFrom DBI dbExecute dbQuoteIdentifier
-#' @importFrom duckdb duckdb_register
-.buildTempTableFilter <- function(conn, col_name, values) {
-    col_quoted <- as.character(dbQuoteIdentifier(conn, col_name))
-
-    # Small lists: inline IN clause (no temp table needed)
-    if (length(values) <= 100L) {
-        vals_str <- paste(values, collapse = ", ")
-        return(list(
-            sql = sprintf("%s IN (%s)", col_quoted, vals_str),
-            temp_name = NULL,
-            type = "inline"
-        ))
-    }
-
-    # Medium lists: temp table with VALUES clause
-    if (length(values) <= 10000L) {
-        temp_suffix <- basename(tempfile(pattern = ""))
-        temp_name <- sprintf("temp_viewport_%s_%s", col_name, temp_suffix)
-
-        # Build VALUES clause: (1), (2), (3), ...
-        values_clause <- paste0("(", paste(values, collapse = "), ("), ")")
-        dbExecute(conn, sprintf(
-            "CREATE TEMP TABLE %s (val) AS SELECT * FROM (VALUES %s) t(val)",
-            temp_name, values_clause
-        ))
-
-        return(list(
-            sql = sprintf("%s IN (SELECT val FROM %s)", col_quoted, temp_name),
-            temp_name = temp_name,
-            type = "temp_table"
-        ))
-    }
-
-    # Large lists: register R data frame as virtual table
-    temp_suffix <- basename(tempfile(pattern = ""))
-    temp_name <- sprintf("temp_viewport_%s_%s", col_name, temp_suffix)
-    df <- data.frame(val = values)
-    duckdb_register(conn, temp_name, df)
-
-    list(
-        sql = sprintf("%s IN (SELECT val FROM %s)", col_quoted, temp_name),
-        temp_name = temp_name,
-        type = "registered"
-    )
-}
-
-### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ### Grid group utilities
 ###
 

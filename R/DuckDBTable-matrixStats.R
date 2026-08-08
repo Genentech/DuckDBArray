@@ -176,6 +176,7 @@ NULL
 #' @importFrom dplyr group_by n summarize
 #' @importFrom DuckDBDataFrame tblconn
 #' @importFrom S4Vectors new2
+#' @importFrom stats setNames
 .marginCounts <-
 function(x, value = TRUE, na.rm = FALSE, dims = 1, fill = 0,
          margin = c("row", "col")) {
@@ -183,21 +184,20 @@ function(x, value = TRUE, na.rm = FALSE, dims = 1, fill = 0,
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
     datacols <- x@datacols
     if (value != fill) {
-        aggr <- sapply(datacols, function(y)
+        aggr <- lapply(datacols, function(y)
                        .na_rm_guard(call("countif", call("==", call("(", y), value)),
-                                    y, na.rm),
-                       simplify = FALSE)
+                                    y, na.rm))
     } else {
-        aggr <- sapply(datacols, function(y)
+        aggr <- lapply(datacols, function(y)
                        .na_rm_guard(
                             call("+",
                                  call("countif", call("==", call("(", y), value)),
                                  call("(", call("-", k, call("n")))),
-                            y, na.rm),
-                       simplify = FALSE)
+                            y, na.rm))
     }
+    aggr <- setNames(aggr, names(datacols))
     conn <- summarize(group_by(tblconn(x, select = FALSE), !!!groups), !!!aggr)
-    datacols <- as.expression(sapply(names(aggr), as.name, simplify = FALSE))
+    datacols <- as.expression(setNames(lapply(names(aggr), as.name), names(aggr)))
     new2("DuckDBTable", conn = conn, datacols = datacols, keycols = keycols, check = FALSE)
 }
 
@@ -223,19 +223,20 @@ function(x, value = TRUE, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRU
 #' @importFrom dplyr group_by n summarize
 #' @importFrom DuckDBDataFrame tblconn
 #' @importFrom S4Vectors new2
+#' @importFrom stats setNames
 .marginMaxs <- function(x, na.rm = FALSE, dims = 1, fill = 0,
                         margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
     datacols <- x@datacols
     nfill <- call("(", call("-", k, call("n")))
-    aggr <- sapply(datacols, function(y) {
+    aggr <- setNames(lapply(datacols, function(y) {
         stat <- call("max", y, na.rm = TRUE)
         expr <- call("if", call("==", nfill, 0L), stat, call("greatest", stat, fill))
         .na_rm_guard(expr, y, na.rm)
-    }, simplify = FALSE)
+    }), names(datacols))
     conn <- summarize(group_by(tblconn(x, select = FALSE), !!!groups), !!!aggr)
-    datacols <- as.expression(sapply(names(aggr), as.name, simplify = FALSE))
+    datacols <- as.expression(setNames(lapply(names(aggr), as.name), names(aggr)))
     new2("DuckDBTable", conn = conn, datacols = datacols, keycols = keycols, check = FALSE)
 }
 
@@ -259,18 +260,18 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
 #' @importFrom dplyr group_by n summarize
 #' @importFrom DuckDBDataFrame tblconn
 #' @importFrom S4Vectors new2
+#' @importFrom stats setNames
 .marginMeans <- function(x, na.rm = FALSE, dims = 1, fill = 0,
                          margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
     datacols <- x@datacols
     if (fill == 0) {
-        aggr <- sapply(datacols, function(y)
+        aggr <- lapply(datacols, function(y)
                        .na_rm_guard(call("/", call("sum", y, na.rm = TRUE), k),
-                                    y, na.rm),
-                       simplify = FALSE)
+                                    y, na.rm))
     } else {
-        aggr <- sapply(datacols, function(y)
+        aggr <- lapply(datacols, function(y)
                        .na_rm_guard(
                             call("/",
                                  call("(",
@@ -280,11 +281,11 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
                                                 fill,
                                                 call("(", call("-", k, call("n")))))),
                                  k),
-                            y, na.rm),
-                       simplify = FALSE)
+                            y, na.rm))
     }
+    aggr <- setNames(aggr, names(datacols))
     conn <- summarize(group_by(tblconn(x, select = FALSE), !!!groups), !!!aggr)
-    datacols <- as.expression(sapply(names(aggr), as.name, simplify = FALSE))
+    datacols <- as.expression(setNames(lapply(names(aggr), as.name), names(aggr)))
     new2("DuckDBTable", conn = conn, datacols = datacols, keycols = keycols, check = FALSE)
 }
 
@@ -306,19 +307,20 @@ setMethod("colMeans", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill =
 #' @importFrom dplyr group_by n summarize
 #' @importFrom DuckDBDataFrame tblconn
 #' @importFrom S4Vectors new2
+#' @importFrom stats setNames
 .marginMins <- function(x, na.rm = FALSE, dims = 1, fill = 0,
                         margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
     datacols <- x@datacols
     nfill <- call("(", call("-", k, call("n")))
-    aggr <- sapply(datacols, function(y) {
+    aggr <- setNames(lapply(datacols, function(y) {
         stat <- call("min", y, na.rm = TRUE)
         expr <- call("if", call("==", nfill, 0L), stat, call("least", stat, fill))
         .na_rm_guard(expr, y, na.rm)
-    }, simplify = FALSE)
+    }), names(datacols))
     conn <- summarize(group_by(tblconn(x, select = FALSE), !!!groups), !!!aggr)
-    datacols <- as.expression(sapply(names(aggr), as.name, simplify = FALSE))
+    datacols <- as.expression(setNames(lapply(names(aggr), as.name), names(aggr)))
     new2("DuckDBTable", conn = conn, datacols = datacols, keycols = keycols, check = FALSE)
 }
 
@@ -342,28 +344,28 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
 #' @importFrom dplyr group_by n summarize
 #' @importFrom DuckDBDataFrame tblconn
 #' @importFrom S4Vectors new2
+#' @importFrom stats setNames
 .marginSums <- function(x, na.rm = FALSE, dims = 1, fill = 0,
                         margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
     datacols <- x@datacols
     if (fill == 0) {
-        aggr <- sapply(datacols, function(y)
-                       .na_rm_guard(call("sum", y, na.rm = TRUE), y, na.rm),
-                       simplify = FALSE)
+        aggr <- lapply(datacols, function(y)
+                       .na_rm_guard(call("sum", y, na.rm = TRUE), y, na.rm))
     } else {
-        aggr <- sapply(datacols, function(y)
+        aggr <- lapply(datacols, function(y)
                        .na_rm_guard(
                             call("+",
                                  call("sum", y, na.rm = TRUE),
                                  call("*",
                                       fill,
                                       call("(", call("-", k, call("n"))))),
-                            y, na.rm),
-                       simplify = FALSE)
+                            y, na.rm))
     }
+    aggr <- setNames(aggr, names(datacols))
     conn <- summarize(group_by(tblconn(x, select = FALSE), !!!groups), !!!aggr)
-    datacols <- as.expression(sapply(names(aggr), as.name, simplify = FALSE))
+    datacols <- as.expression(setNames(lapply(names(aggr), as.name), names(aggr)))
     new2("DuckDBTable", conn = conn, datacols = datacols, keycols = keycols, check = FALSE)
 }
 
@@ -385,6 +387,7 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
 #' @importFrom dplyr group_by left_join n summarize
 #' @importFrom DuckDBDataFrame tblconn
 #' @importFrom S4Vectors new2
+#' @importFrom stats setNames
 .marginVars <- function(x, na.rm = FALSE, dims = 1, fill = 0,
                         margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
@@ -397,7 +400,7 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
     # This leverages DuckDB's numerically stable VAR_SAMP and reduces Parquet scans
     if (fill == 0) {
         conn <- tblconn(x, select = FALSE)
-        aggr <- sapply(names(datacols), function(nm) {
+        aggr <- setNames(lapply(names(datacols), function(nm) {
             y <- datacols[[nm]]
             n <- call("n")
             sum_y <- call("sum", y, na.rm = TRUE)
@@ -411,22 +414,21 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
                                call("(", call("-", call("/", 1, n), call("/", 1, k))))
             expr <- call("/", call("(", call("+", var_samp_term, sum_sq_term)), k - 1L)
             .na_rm_guard(expr, y, na.rm)
-        }, simplify = FALSE)
+        }), names(datacols))
 
         conn <- summarize(group_by(conn, !!!groups), !!!aggr)
-        datacols <- as.expression(sapply(names(aggr), as.name, simplify = FALSE))
+        datacols <- as.expression(setNames(lapply(names(aggr), as.name), names(aggr)))
         return(new2("DuckDBTable", conn = conn, datacols = datacols, keycols = keycols, check = FALSE))
     }
 
     # For fill != 0, use two-pass approach (original implementation)
-    aggr <- sapply(datacols, function(y)
+    aggr <- setNames(lapply(datacols, function(y)
                    call("/",
                         call("(",
                              call("+",
                                   call("sum", y, na.rm = TRUE),
                                   call("*", fill, nfill))),
-                        k),
-                   simplify = FALSE)
+                        k)), names(datacols))
     conn <- tblconn(x, select = FALSE)
     mean_names <- vapply(names(aggr), function(nm) {
         tail(make.unique(c(colnames(conn), paste0(nm, "_mean")), sep = "_"), 1L)
@@ -435,7 +437,7 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
 
     conn <- left_join(conn, summarize(group_by(conn, !!!groups), !!!aggr), by = names(keycols))
 
-    aggr <- sapply(names(datacols), function(nm) {
+    aggr <- setNames(lapply(names(datacols), function(nm) {
         y <- datacols[[nm]]
         y_mean <- as.name(mean_names[[nm]])
         y_mean_agg <- call("any_value", y_mean)
@@ -445,10 +447,10 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
         zero_contrib <- call("*", call("(", call("*", fill_dev, fill_dev)), nfill)
         expr <- call("/", call("(", call("+", sum_dev_sq, zero_contrib)), k - 1L)
         .na_rm_guard(expr, y, na.rm)
-    }, simplify = FALSE)
+    }), names(datacols))
 
     conn <- summarize(group_by(conn, !!!groups), !!!aggr)
-    datacols <- as.expression(sapply(names(aggr), as.name, simplify = FALSE))
+    datacols <- as.expression(setNames(lapply(names(aggr), as.name), names(aggr)))
     new2("DuckDBTable", conn = conn, datacols = datacols, keycols = keycols, check = FALSE)
 }
 

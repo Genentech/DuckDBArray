@@ -331,6 +331,8 @@ test_that("matrix multiplication errors on non-conformable operands", {
 })
 
 test_that("rowDeviances works on airway counts DuckDBMatrix", {
+    skip_if_not_installed("airway")
+
     names(dimnames(airway_counts)) <- c("index1", "index2")
     pqmat <- DuckDBMatrix(airway_counts_path, datacol = "value",
                           keycols = lapply(dimnames(airway_counts),

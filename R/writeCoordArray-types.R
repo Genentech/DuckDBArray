@@ -132,9 +132,11 @@ function(path, indexcols, datacol, schema, max_dim)
 
     switch(type,
            "boolean" = bool(),
+           "logical" = bool(),
            "tinyint" = int8(),
            "smallint" = int16(),
            "integer" = int32(),
+           "integer64" = int64(),
            "bigint" = int64(),
            "hugeint" = int64(),
            "utinyint" = uint8(),
@@ -146,8 +148,10 @@ function(path, indexcols, datacol, schema, max_dim)
            "real" = float32(),
            "double" = float64(),
            "decimal" = float64(),
+           "numeric" = float64(),
            "varchar" = utf8(),
            "char" = utf8(),
+           "character" = utf8(),
            "bpchar" = utf8(),
            "text" = utf8(),
            "string" = utf8(),
@@ -159,12 +163,6 @@ function(path, indexcols, datacol, schema, max_dim)
            "bytea" = binary(),
            "geometry" = binary(),
            "geometry_type" = utf8(),
-           "integer" = int32(),
-           "integer64" = int64(),
-           "numeric" = float64(),
-           "double" = float64(),
-           "character" = utf8(),
-           "logical" = bool(),
            float64())
 }
 

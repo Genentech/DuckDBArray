@@ -4,6 +4,8 @@
 # using the airway_counts matrix from setup.R
 
 test_that("rowDeviances works on dgCMatrix", {
+    skip_if_not_installed("airway")
+
     # Convert airway_counts to dgCMatrix
     sparse_mat <- as(airway_counts, "dgCMatrix")
 
@@ -32,6 +34,7 @@ test_that("rowDeviances works on dgCMatrix", {
 
 test_that("rowDeviances works on HDF5Matrix (DelayedMatrix) with default settings", {
     skip_if_not_installed("HDF5Array")
+    skip_if_not_installed("airway")
 
     # Create HDF5Matrix from airway_counts
     h5_file <- tempfile(fileext = ".h5")
@@ -66,6 +69,7 @@ test_that("rowDeviances works on HDF5Matrix (DelayedMatrix) with default setting
 
 test_that("rowDeviances works on DelayedMatrix with dense blocks (small grid)", {
     skip_if_not_installed("HDF5Array")
+    skip_if_not_installed("airway")
 
     # Create HDF5Matrix from airway_counts
     h5_file <- tempfile(fileext = ".h5")
@@ -107,6 +111,7 @@ test_that("rowDeviances works on DelayedMatrix with dense blocks (small grid)", 
 
 test_that("rowDeviances works on DelayedMatrix with sparse blocks (small grid)", {
     skip_if_not_installed("HDF5Array")
+    skip_if_not_installed("airway")
 
     # Create HDF5Matrix from airway_counts
     h5_file <- tempfile(fileext = ".h5")

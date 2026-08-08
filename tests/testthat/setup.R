@@ -33,10 +33,12 @@ arrow::write_parquet(titanic_df, titanic_parquet)
 
 
 # Airway counts dataset
-data(airway, package = "airway")
-airway_counts <- SummarizedExperiment::assay(airway, "counts")
-airway_counts_path <- file.path(tempfile(), "airway_counts")
-writeCoordArray(airway_counts, airway_counts_path)
+if (requireNamespace("airway", quietly = TRUE)) {
+    data(airway, package = "airway")
+    airway_counts <- SummarizedExperiment::assay(airway, "counts")
+    airway_counts_path <- file.path(tempfile(), "airway_counts")
+    writeCoordArray(airway_counts, airway_counts_path)
+}
 
 
 # Random array

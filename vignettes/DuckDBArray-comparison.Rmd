@@ -20,6 +20,16 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>",
                       error = FALSE, warning = FALSE, message = FALSE)
+
+.matrixstats_ok <- requireNamespace("sparseMatrixStats", quietly = TRUE) ||
+    requireNamespace("DelayedMatrixStats", quietly = TRUE)
+```
+
+```{r matrixstats-unavailable-note, echo=FALSE, results='asis', eval=!.matrixstats_ok}
+cat("> **Note:** Neither `sparseMatrixStats` nor `DelayedMatrixStats` is ",
+    "installed in this build environment, so the `rowVars()` comparison below ",
+    "is shown but not evaluated. Install one of them (with ",
+    "`BiocManager::install()`) to run it.\n", sep = "")
 ```
 
 # Introduction
@@ -94,10 +104,16 @@ mat <- DuckDBMatrix(path, datacol = "value",
                                    index2 = setNames(seq_len(ncol(m)), colnames(m))),
                     dimtbls = createDimTables(m))
 
-## same answer, one in memory and one queried from disk
-all.equal(rowVars(m), rowVars(mat))
+## same answer, one in memory and one queried from disk;
+## rowDeviances() is DuckDBArray's own generic and needs no optional package
 all.equal(unname(rowDeviances(m, family = "binomial")),
           unname(rowDeviances(mat, family = "binomial")))
+```
+
+```{r live-demo-rowvars, eval=.matrixstats_ok}
+## rowVars(m) dispatches to sparseMatrixStats/DelayedMatrixStats for the plain
+## dgCMatrix; rowVars(mat) is DuckDBArray's own method and needs neither
+all.equal(rowVars(m), rowVars(mat))
 ```
 
 At this size the in-memory matrix is faster, there is nothing to gain from

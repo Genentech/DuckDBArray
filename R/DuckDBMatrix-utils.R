@@ -198,15 +198,15 @@ NULL
     limit <- getOption("DuckDBArray.gram_pair_limit", .GRAM_PAIR_LIMIT)
     est_pairs <- (nnz * nnz) / max(as.numeric(contracted_dim), 1)
     if (est_pairs > limit) {
-        stop(sprintf(paste0(
+        stop(sprintf(
             "%s would build ~%.1e self-join pairs (nnz=%s, contracted dim=%s), over the %.0e safeguard -- ",
-            "this self-join does not scale yet (blocked crossprod is future work). Subset the matrix (e.g. to ",
-            "highly variable genes) first, or materialize with as.matrix() and use base R."),
             op, est_pairs,
             format(nnz, big.mark = ",", scientific = FALSE, trim = TRUE),
             format(contracted_dim, big.mark = ",", scientific = FALSE,
                    trim = TRUE),
             limit),
+            "this self-join does not scale yet (blocked crossprod is future work). Subset the matrix (e.g. to ",
+            "highly variable genes) first, or materialize with as.matrix() and use base R.",
             call. = FALSE)
     }
     invisible(NULL)
