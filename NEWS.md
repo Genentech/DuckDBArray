@@ -1,3 +1,26 @@
+# DuckDBArray 0.99.7
+
+## New features
+
+- Added `scanKeycols(path, keycols)`, a convenience function that scans a
+  COO Parquet file/dataset for the distinct, sorted values of the named key
+  columns and returns them already in the list shape expected by the
+  `keycols` argument of `DuckDBArray()`/`DuckDBMatrix()`. Introduced in
+  response to Bioconductor review feedback on the introspection example in
+  the vignette, which required repeating a manual
+  `distinct()`/`arrange()`/`collect()` scan by hand for each key column; the
+  sort is pushed down into the query plan rather than done in R after
+  collecting. The vignette's "Introspecting a Parquet file you did not
+  write" section now uses it.
+
+## Testing
+
+- Added `skip_if_not_installed("sparseMatrixStats")` to the `rowNnzs()`
+  tests that exercise a `dgCMatrix` (`test-rowNnzs.R`), which otherwise
+  error rather than skip when `sparseMatrixStats`/`DelayedMatrixStats`
+  aren't installed, since `MatrixGenerics::rowCounts()` on a `dgCMatrix`
+  has no method without one of them.
+
 # DuckDBArray 0.99.6
 
 ## Bug fixes

@@ -7,6 +7,7 @@ export(colNnzs)
 export(createDimTables)
 export(rowDeviances)
 export(rowNnzs)
+export(scanKeycols)
 export(writeCoordArray)
 exportClasses(DuckDBArray)
 exportClasses(DuckDBArraySeed)
@@ -183,6 +184,7 @@ importFrom(arrow,
   int32,
   int64,
   int8,
+  open_dataset,
   time32,
   timestamp,
   uint16,
@@ -195,12 +197,17 @@ importFrom(arrow,
 )
 importFrom(dbplyr,sql_render)
 importFrom(dplyr,
+  across,
+  all_of,
+  arrange,
   collect,
+  distinct,
   group_by,
   inner_join,
   left_join,
   mutate,
   n,
+  pull,
   select,
   summarize
 )

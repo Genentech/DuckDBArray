@@ -5,6 +5,7 @@
 
 test_that("rowNnzs works on dgCMatrix", {
     skip_if_not_installed("airway")
+    skip_if_not_installed("sparseMatrixStats")
 
     # Convert airway_counts to dgCMatrix
     sparse_mat <- as(airway_counts, "dgCMatrix")
@@ -66,6 +67,8 @@ test_that("rowNnzs works on HDF5Matrix (DelayedMatrix) with default settings", {
 })
 
 test_that("rowNnzs handles edge cases correctly", {
+    skip_if_not_installed("sparseMatrixStats")
+
     # Small test matrix with known properties
     set.seed(42)
     small_mat <- matrix(rpois(500, lambda = 5), nrow = 50, ncol = 10)
@@ -95,6 +98,8 @@ test_that("rowNnzs handles edge cases correctly", {
 })
 
 test_that("rowNnzs preserves row/column names", {
+    skip_if_not_installed("sparseMatrixStats")
+
     # Test with named matrix
     mat <- matrix(rpois(100, 10), nrow = 10, ncol = 10)
     rownames(mat) <- letters[1:10]

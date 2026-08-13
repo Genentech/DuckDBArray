@@ -1,6 +1,6 @@
 Package: DuckDBArray
-Version: 0.99.6
-Date: 2026-08-08
+Version: 0.99.7
+Date: 2026-08-12
 Title: DuckDB-Backed DelayedArray Implementation
 Description:
     Provides DuckDB-backed implementations of DelayedArray and DelayedMatrix
@@ -70,6 +70,7 @@ Collate:
     'createDimTables.R'
     'rowDeviances.R'
     'rowNnzs.R'
+    'scanKeycols.R'
     'writeCoordArray-duckdb.R'
     'writeCoordArray-generic.R'
     'writeCoordArray-methods.R'

@@ -243,23 +243,28 @@ arr[1:2, 1:2, 1]
 
 The example above already knows `keycols` because it wrote `arr_path` itself.
 Given a COO Parquet file produced by another tool, use `r CRANpkg("arrow")` to
-find the key and data column names and the extent of each dimension before
-constructing a `DuckDBArray`: the schema names the columns and their types, and
-the distinct values of each key column give that dimension's levels.
+find the key and data column names first: the schema names the columns and
+their types.
 
-```{r introspect}
-## which columns exist, and their types
+```{r introspect-schema}
 open_dataset(arr_path)$schema
-
-## the distinct values of a key column define that dimension's levels
-open_dataset(arr_path) |>
-    dplyr::distinct(i) |>
-    dplyr::arrange(i) |>
-    dplyr::collect()
 ```
 
-Repeating the second step for each key column recovers the full `keycols` list
-needed to construct the `DuckDBArray`/`DuckDBMatrix`.
+`scanKeycols()` then scans the named key columns for their distinct values,
+sorted, and returns them already in the `keycols` shape the
+`DuckDBArray()`/`DuckDBMatrix()` constructors expect, so there's no need to
+repeat the `distinct()`/`arrange()`/`collect()` steps by hand for each key
+column:
+
+```{r introspect-keycols}
+scanKeycols(arr_path, keycols = c("i", "j", "k"))
+```
+
+```{r introspect-construct}
+arr2 <- DuckDBArray(arr_path, datacol = "value",
+                    keycols = scanKeycols(arr_path, c("i", "j", "k")))
+dim(arr2)
+```
 
 # When to use DuckDBArray
 
