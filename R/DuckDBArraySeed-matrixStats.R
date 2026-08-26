@@ -131,7 +131,7 @@ function(x, value = TRUE, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
     if (x@fill == value) {
         fill <- prod(tail(dim(x), - dims))
     } else {
-        fill <- vector(coltypes(x@table), 1L)
+        fill <- .coltypeFillVector(coltypes(x@table))
     }
     replaceSlots(x, table = callGeneric(x@table, value = value, na.rm = na.rm, dims = dims, fill = x@fill, ...),
                  fill = fill, check = FALSE)
@@ -144,7 +144,7 @@ function(x, value = TRUE, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
     if (x@fill == value) {
         fill <- prod(head(dim(x), dims))
     } else {
-        fill <- vector(coltypes(x@table), 1L)
+        fill <- .coltypeFillVector(coltypes(x@table))
     }
     replaceSlots(x, table = callGeneric(x@table, value = value, na.rm = na.rm, dims = dims, fill = x@fill, ...),
                  fill = fill, check = FALSE)
@@ -223,7 +223,7 @@ setMethod("colSums", "DuckDBArraySeed", function(x, na.rm = FALSE, dims = 1, ...
 setMethod("rowSds", "DuckDBArraySeed",
 function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
-                 fill = vector(coltypes(x@table), 1L), check = FALSE)
+                 fill = .coltypeFillVector(coltypes(x@table)), check = FALSE)
 })
 
 #' @export
@@ -231,7 +231,7 @@ function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
 setMethod("colSds", "DuckDBArraySeed",
 function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
-                 fill = vector(coltypes(x@table), 1L), check = FALSE)
+                 fill = .coltypeFillVector(coltypes(x@table)), check = FALSE)
 })
 
 #' @export
@@ -239,7 +239,7 @@ function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
 setMethod("rowVars", "DuckDBArraySeed",
 function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
-                 fill = vector(coltypes(x@table), 1L), check = FALSE)
+                 fill = .coltypeFillVector(coltypes(x@table)), check = FALSE)
 })
 
 #' @export
@@ -247,5 +247,5 @@ function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
 setMethod("colVars", "DuckDBArraySeed",
 function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
-                 fill = vector(coltypes(x@table), 1L), check = FALSE)
+                 fill = .coltypeFillVector(coltypes(x@table)), check = FALSE)
 })

@@ -1,3 +1,47 @@
+# DuckDBArray 0.99.8
+
+## Bug fixes
+
+- Constructing a `DuckDBArray`/`DuckDBArraySeed`/`DuckDBMatrix` over a
+  genuinely `BIGINT`/`HUGEINT`-typed value column no longer crashes with
+  `vector: cannot make a vector of mode 'integer64'`. `coltypes()` reports
+  `"integer64"` for such columns, and 9 call sites across
+  `DuckDBArraySeed-class.R` / `DuckDBArraySeed-matrixStats.R` built the
+  seed's structural fill value via `vector(coltypes(...), 1L)`, which errors
+  because `"integer64"` is a `bit64` package class name, not a valid
+  `vector()` mode. Replaced with a shared `.coltypeFillVector()` helper.
+- Fixed a second, related bug this surfaced: `as.matrix()` /
+  `extract_array()` on a successfully-constructed `integer64`-valued
+  `DuckDBArray` (the standard construction path opens its DuckDB connection
+  with `bigint = "integer64"`, see `acquireDuckDBConn()`) silently returned
+  garbage values (e.g. `4.94e-324` instead of `1`) rather than erroring.
+  `array()` and `[<-` are class-blind and operate on the underlying
+  `double` storage only, so they never invoke `bit64`'s
+  `as.double.integer64()` conversion; a genuinely `integer64`-classed value
+  copied into a plain array reinterprets its raw 64-bit pattern as a double
+  instead of converting it. `rowSums()` / `rowCounts()` were unaffected
+  (computed via SQL, not R-side materialization). `DuckDBArray` already
+  treats `integer64` as double-precision fidelity everywhere else, so
+  `extract_array()`, `extract_sparse_array()`, and the COO fast path
+  (`.collectCOO()`) now normalize any `integer64`-classed datacol value to
+  plain `double` at the point it's materialized from the database, via a
+  new `.dropInteger64()` helper, instead of trying to keep a real
+  `bit64`-classed value alive through `array()`/`[<-`/`COO_SparseArray()`.
+- The `DuckDBArraySeed` `fill` slot is now `"ANY"` (was `"atomic"`), with
+  validity enforced via `is.atomic()` (`TRUE` for `integer64` values too)
+  rather than the slot's formal class, so a genuine `integer64` fill value
+  is accepted.
+
+## Documentation
+
+- `writeCoordArray()`'s `arrowtype` and `max_dim` docs now correctly
+  describe the `DuckDBArray` fast-path method: unlike the `ANY` method,
+  which infers the narrowest type from the data (or from `dim(x)` for
+  index columns) when these are `NULL`, the `DuckDBArray` method does not
+  materialize values to compute this; it takes the source's existing
+  declared column type as-is. Pass `arrowtype`/`max_dim` explicitly to
+  narrow the on-disk type for a `DuckDBArray` source.
+
 # DuckDBArray 0.99.7
 
 ## New features

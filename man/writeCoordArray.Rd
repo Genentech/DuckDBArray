@@ -77,9 +77,15 @@ directories if the grid contains more than one cell. Defaults to "_group".}
 \item{arrowtype}{An optional \link[arrow]{DataType} for the value column
 (e.g. \code{arrow::int32()}, \code{arrow::uint16()},
 \code{arrow::float64()}). When \code{NULL} and \code{append = FALSE}, the
-type is inferred from the data: the narrowest type capable of representing
-the range of non-zero values if they are all integer-valued, and
-otherwise \code{double}. When \code{NULL} and \code{append = TRUE}, the
+\code{ANY} method infers the type from the data: the narrowest type
+capable of representing the range of non-zero values if they are all
+integer-valued, and otherwise \code{double}. The \code{DuckDBArray}
+method does not materialize values to compute this range; it instead
+takes the value column's existing declared type from \code{x}'s backing
+table as-is (e.g. a column declared \code{DOUBLE} writes \code{double}
+even if every non-zero value would fit in a narrower integer type). Pass
+\code{arrowtype} explicitly to narrow the on-disk type for a
+\code{DuckDBArray} source. When \code{NULL} and \code{append = TRUE}, the
 type is read from an existing parquet file under \code{path} so that the
 appended slab always matches the existing value-column schema. When
 supplied explicitly in append mode, it is verified to match the existing
@@ -89,16 +95,19 @@ schema; a mismatch aborts the call before any file is written.}
 giving an upper bound on the coordinates in each dimension. Controls the
 arrow type chosen for each index column: the narrowest unsigned integer
 type that can represent \code{0..max_dim[j]} is picked for column
-\code{indexcols[j]}. When \code{NULL} and \code{append = FALSE},
-\code{dim(x)} is used. When \code{NULL} and \code{append = TRUE}, the
-index-column types are read from an existing parquet file under
-\code{path} so that the appended slab always matches the existing
-index-column schema. When supplied explicitly in append mode, the
-resulting types are verified to match the existing schema; a mismatch
-aborts the call before any file is written. The caller does not need to
-know the exact final extent, only an upper bound on it; setting
-\code{max_dim} too high only costs a slightly wider integer type on
-disk.}
+\code{indexcols[j]}. When \code{NULL} and \code{append = FALSE}, the
+\code{ANY} method uses \code{dim(x)}; the \code{DuckDBArray} method
+instead takes each index column's existing declared type from \code{x}'s
+backing table as-is, without regard to \code{dim(x)}. Pass \code{max_dim}
+explicitly to narrow the on-disk index types for a \code{DuckDBArray}
+source. When \code{NULL} and \code{append = TRUE}, the index-column types
+are read from an existing parquet file under \code{path} so that the
+appended slab always matches the existing index-column schema. When
+supplied explicitly in append mode, the resulting types are verified to
+match the existing schema; a mismatch aborts the call before any file is
+written. The caller does not need to know the exact final extent, only an
+upper bound on it; setting \code{max_dim} too high only costs a slightly
+wider integer type on disk.}
 
 \item{append}{Logical; when \code{TRUE}, write additional hive-style
 partitions into an existing directory previously created by

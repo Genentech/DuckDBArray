@@ -157,7 +157,7 @@ replaceSlots <- BiocGenerics:::replaceSlots
 #' @importClassesFrom DuckDBDataFrame DuckDBTable
 #' @importClassesFrom S4Arrays Array
 setClass("DuckDBArraySeed", contains = "Array",
-         slots = c(table = "DuckDBTable", fill = "atomic", drop = "logical"),
+         slots = c(table = "DuckDBTable", fill = "ANY", drop = "logical"),
          prototype = prototype(fill = FALSE, drop = FALSE))
 
 ### - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -210,7 +210,7 @@ setValidity2("DuckDBArraySeed", function(x) {
             msg <- c(msg, "'table' slot must be a single-column DuckDBTable")
         }
     }
-    if (length(x@fill) != 1L) {
+    if (!is.atomic(x@fill) || (length(x@fill) != 1L)) {
         msg <- c(msg, "'fill' slot must be a single atomic value")
     }
     if (!isTRUEorFALSE(x@drop)) {
@@ -327,8 +327,22 @@ setReplaceMethod("dimnames", "DuckDBArraySeed", function(x, value) {
     for (j in seq_len(ndim)) {
         nzcoo[, j] <- .match_int(df[[j + 1L]], index[[j]])
     }
-    list(nzcoo = nzcoo, nzdata = df[[1L]],
+    list(nzcoo = nzcoo, nzdata = .dropInteger64(df[[1L]]),
          dim = lengths(dimnames, use.names = FALSE), dimnames = dimnames)
+}
+
+.coltypeFillVector <- function(type, n = 1L) {
+    type <- unname(type)[[1L]]
+    if (identical(type, "integer64"))
+        return(vector("double", n))
+    if (type %in% c("logical", "integer", "double", "character", "raw"))
+        return(vector(type, n))
+    stop("DuckDBArray value column must be logical, integer, integer64, ",
+         "double, character, or raw; got type '", type, "'")
+}
+
+.dropInteger64 <- function(x) {
+    if (inherits(x, "integer64")) as.double(x) else x
 }
 
 # TRUE when the seed's fill is the zero of its column type, i.e. the sparse
@@ -336,7 +350,7 @@ setReplaceMethod("dimnames", "DuckDBArraySeed", function(x, value) {
 # sparse vs dense branch). FALSE => the array is not zero-filled, so a direct
 # nonzero-only build would be wrong and callers must defer to the default.
 .seedZeroFilled <- function(x) {
-    identical(vector(coltypes(x@table), 1L), x@fill)
+    identical(.coltypeFillVector(coltypes(x@table)), x@fill)
 }
 
 #' @export
@@ -373,7 +387,7 @@ setMethod("extract_array", "DuckDBArraySeed", function(x, index) {
         }
     }
 
-    output[midx] <- df[[1L]] # datacol is always column 1
+    output[midx] <- .dropInteger64(df[[1L]]) # datacol is always column 1
     if (x@drop) {
         output <- as.array(drop(output))
     }
@@ -386,7 +400,7 @@ setMethod("extract_array", "DuckDBArraySeed", function(x, index) {
 #' @importFrom DuckDBDataFrame coltypes
 #' @importFrom SparseArray COO_SparseArray extract_sparse_array
 setMethod("extract_sparse_array", "DuckDBArraySeed", function(x, index) {
-    if (!identical(vector(coltypes(x@table), 1L), x@fill)) {
+    if (!identical(.coltypeFillVector(coltypes(x@table)), x@fill)) {
         return(as(extract_array(x, index), "SVT_SparseArray"))
     }
 
@@ -394,11 +408,12 @@ setMethod("extract_sparse_array", "DuckDBArraySeed", function(x, index) {
     dimnames <- lapply(index, function(y) names(y) %||% y)
     table <- x@table[dimnames, ]
     df <- as.data.frame(table, optional = TRUE, limit.rows = FALSE)
+    df[[1L]] <- .dropInteger64(df[[1L]]) # datacol is always column 1
     if (x@drop) {
         dimnames <- dimnames[lengths(dimnames) > 1L]
     }
     if (length(dimnames) == 0L) {
-        arr <- array(df[[1L]]) # datacol is always column 1
+        arr <- array(df[[1L]])
         if ((length(arr) == 0L) && (prod(lengths(index)) == 1L)) {
             arr <- array(x@fill)
         }
@@ -417,7 +432,7 @@ setMethod("extract_sparse_array", "DuckDBArraySeed", function(x, index) {
     for (j in seq_along(names(dimnames))) {
         nzcoo[, j] <- .match_int(df[[j + 1L]], index[[j]])
     }
-    nzdata <- df[[1L]] # datacol is always column 1
+    nzdata <- df[[1L]]
     coo <- COO_SparseArray(dim = dim, nzcoo = nzcoo, nzdata = nzdata,
                            dimnames = dimnames, check = FALSE)
     as(coo, "SVT_SparseArray")
@@ -441,7 +456,7 @@ DuckDBArraySeed <- function(conn, datacol, keycols, dimtbls = NULL, type = NULL)
     }
     table <- DuckDBTable(conn, datacols = datacol, keycols = keycols,
                          dimtbls = dimtbls, type = type)
-    fill <- vector(coltypes(table), 1L)
+    fill <- .coltypeFillVector(coltypes(table))
     new2("DuckDBArraySeed", table = table, fill = fill, drop = FALSE, check = FALSE)
 }
 
