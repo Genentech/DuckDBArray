@@ -195,12 +195,16 @@ importFrom(arrow,
   write_dataset,
   write_parquet
 )
-importFrom(dbplyr,sql_render)
+importFrom(dbplyr,
+  remote_con,
+  sql_render
+)
 importFrom(dplyr,
   across,
   all_of,
   arrange,
   collect,
+  copy_to,
   distinct,
   group_by,
   inner_join,

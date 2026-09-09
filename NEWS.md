@@ -1,3 +1,28 @@
+# DuckDBArray 0.99.9
+
+## Bug fixes
+
+- `%*%`/`crossprod`/`tcrossprod`'s vector-multiply helpers
+  (`.matmult_DuckDBMatrix_vector`/`.matmult_vector_DuckDBMatrix`,
+  `DuckDBMatrix-utils.R`) named their `left_join(..., copy = TRUE)` temp
+  table via `dplyr`'s default, `dbplyr::unique_table_name()`, which draws its
+  "random" 10-character suffix from R's **global RNG stream**, not an
+  independent source. Under a caller-seeded RNG, e.g. any reproducible
+  analysis that pins `set.seed()` before an iterative solver like `irlba`
+  (needed for deterministic SVD results, since `irlba` also draws its
+  starting vector from the global RNG when none is supplied), repeated
+  `%*%` calls within one Lanczos iteration, or separate calls across a
+  session that reset to the same seed, could regenerate the exact same
+  "random" table name and collide with a still-live temp table: none of
+  these helpers ever drop theirs (matching every other lazy pushdown in this
+  file, the result stays an un-executed lazy query, so dropping the source
+  temp table on function return would break it before anyone materializes
+  the result). Found via BiocDuckDB's SVD composition tests, which pin
+  `set.seed()` for reproducibility and hit exactly this collision under a
+  full test run. Fixed by copying the small in-memory vector explicitly with
+  a monotonic, RNG-independent name (`.duckdb_matmult_copy()`) instead of
+  relying on `copy = TRUE`'s naming.
+
 # DuckDBArray 0.99.8
 
 ## Bug fixes

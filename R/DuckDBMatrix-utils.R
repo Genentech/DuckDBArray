@@ -72,6 +72,21 @@ NULL
 ### Helper functions for matrix-vector multiplication
 ###
 
+.duckdb_matmult_tmp_counter <- local({
+    i <- 0L
+    function() {
+        i <<- i + 1L
+        sprintf("__duckdb_array_matmult_tmp_%d_%d__", Sys.getpid(), i)
+    }
+})
+
+#' @importFrom dplyr copy_to
+#' @importFrom dbplyr remote_con
+.duckdb_matmult_copy <- function(conn, df) {
+    copy_to(remote_con(conn), df, name = .duckdb_matmult_tmp_counter(),
+            temporary = TRUE, overwrite = TRUE)
+}
+
 .get_matrix_keycols <- function(table) {
     keycols <- table@keycols
     lens <- lengths(keycols)
@@ -108,11 +123,12 @@ NULL
                        stringsAsFactors = FALSE)
     names(y_df)[1L] <- col_key
     conn <- tblconn(table, select = FALSE)
+    y_tbl <- .duckdb_matmult_copy(conn, y_df)
     product_expr <- call("*", call("(", datacol), as.name("y_value"))
     sum_expr <- call("sum", product_expr, na.rm = TRUE)
     aggr <- setNames(list(sum_expr), datacol_name)
     result_conn <- conn |>
-        left_join(y_df, by = col_key, copy = TRUE) |>
+        left_join(y_tbl, by = col_key) |>
         group_by(!!as.name(row_key)) |>
         summarize(!!!aggr, .groups = "drop") |>
         mutate(`__col__` = 1L)
@@ -157,11 +173,12 @@ NULL
                        stringsAsFactors = FALSE)
     names(y_df)[1L] <- row_key
     conn <- tblconn(table, select = FALSE)
+    y_tbl <- .duckdb_matmult_copy(conn, y_df)
     product_expr <- call("*", as.name("y_value"), call("(", datacol))
     sum_expr <- call("sum", product_expr, na.rm = TRUE)
     aggr <- setNames(list(sum_expr), datacol_name)
     result_conn <- conn |>
-        left_join(y_df, by = row_key, copy = TRUE) |>
+        left_join(y_tbl, by = row_key) |>
         group_by(!!as.name(col_key)) |>
         summarize(!!!aggr, .groups = "drop") |>
         mutate(`__row__` = 1L)
