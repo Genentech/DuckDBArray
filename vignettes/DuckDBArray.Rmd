@@ -140,6 +140,43 @@ mat2 <- DuckDBMatrix(path, datacol = "value",
 dim(mat2)
 ```
 
+## Sizing partitions for large or sparse writes
+
+`writeCoordArray()` defaults to a single partition (`grid = NULL` collapses
+to one cell when the array is small). For a large matrix, pass a `grid` --
+or, more commonly, leave `grid = NULL` and instead tune the automatic sizing
+that computes it, `DelayedArray::defaultAutoGrid(COO_SparseArray(dim(x)))`.
+
+That automatic sizing budgets partitions from `dim(x)` alone: it treats `x`
+as fully dense, regardless of how sparse it actually is. For a sparse `x`,
+correct the budget by inflating it by `1 / density` before writing:
+
+```{r size-grid, eval=FALSE}
+density <- Matrix::nnzero(m) / prod(dim(m))
+target_bytes_per_partition <- 100e6
+setAutoBlockSize(target_bytes_per_partition / density)
+setAutoBlockShape("scale")   # distribute the budget proportionally to each
+                              # axis's extent, not evenly (the "hypercube" default)
+writeCoordArray(m, path)     # grid = NULL now sizes off the corrected budget
+```
+
+This correction has a hard ceiling, independent of `setAutoBlockSize()`: the
+dense element count budgeted per partition cannot exceed
+`.Machine$integer.max` (about 2.15 billion). If `prod(dim(x))` divided by
+that ceiling already exceeds the number of partitions you want, no amount of
+`setAutoBlockSize()` tuning gets you there:
+
+```{r size-ceiling}
+dim_big <- c(378345, 14628532)
+prod(dim_big) / .Machine$integer.max
+```
+
+At roughly 2,577, even the legal maximum block size reaches only on the
+order of a few thousand partitions for an array this large and this sparse
+-- nowhere close to a target in the low hundreds. In that regime, build
+`grid` some other way (e.g. an explicit `RegularArrayGrid` sized from the
+array's actual non-zero count), not from `defaultAutoGrid()`.
+
 ## Subsetting
 
 Subsetting is delayed: it records the selection and is resolved only when values

@@ -179,6 +179,48 @@ An \code{arrow::write_dataset} wrapper function to write array-like objects
 in coordinate format. If dimension names are present, they are substituted
 for the corresponding indices.
 }
+\details{
+\strong{Sizing \code{grid} for large or sparse arrays:} when \code{grid}
+is \code{NULL}, \code{defaultAutoGrid(COO_SparseArray(dim(x)))} sizes
+partitions from \code{dim(x)} alone: a dense element-count budget
+(\code{DelayedArray::getAutoBlockSize()} bytes, divided by the value
+type's element size) that \code{DelayedArray::getAutoBlockShape()}
+distributes across axes (\code{"scale"} proportionally to each axis's
+extent; \code{"hypercube"}, the default, splits every axis by the same
+factor). Neither setting looks at how many non-zero entries \code{x}
+actually has, so for a sparse \code{x} the defaults budget partitions as
+if \code{x} were fully dense, which can produce far more or far fewer
+partitions than the on-disk (non-zero-only) data volume warrants.
+
+To size partitions off the real, sparse data volume instead, call
+\code{DelayedArray::setAutoBlockSize(target_bytes / density)} and
+\code{DelayedArray::setAutoBlockShape("scale")} before \code{grid} is
+computed (i.e. before this call, since \code{grid = NULL} computes it
+internally), where \code{density = nnz(x) / prod(dim(x))} and
+\code{target_bytes} is the desired size, in bytes, of each partition's
+non-zero payload. Inflating the nominal (dense) budget by \code{1 /
+density} means that once only the non-zero entries are actually stored,
+each partition lands near \code{target_bytes}. A literal, fixed
+\code{setAutoBlockSize()} value tuned for one dataset (as opposed to one
+derived from that dataset's own \code{density}) does not generalize to a
+dataset of different size or sparsity.
+
+This correction has a hard ceiling: \code{block.length} (the dense
+element count \code{defaultAutoGrid()} budgets per partition) cannot
+exceed \code{.Machine$integer.max} (about 2.15 billion) regardless of
+\code{setAutoBlockSize()}; larger values error with "Automatic block
+length is too big". When \code{prod(dim(x))} is large enough that
+\code{prod(dim(x)) / .Machine$integer.max} alone exceeds the number of
+partitions wanted, no \code{setAutoBlockSize()} /
+\code{setAutoBlockShape()} combination can reach it -- e.g. for a
+\code{378345 x 14628532} array, that ratio is already about 2,577, so
+even at the legal maximum block size the default (hypercube) shape
+reaches only on the order of 2,600-2,844 partitions, far short of a
+target in the low hundreds. In that regime \code{grid} must be
+constructed some other way, e.g. an explicit
+\code{\link[S4Arrays]{RegularArrayGrid}} sized from \code{nnz(x)}
+directly rather than from \code{dim(x)}.
+}
 \examples{
 # Write the state.x77 matrix to multiple Parquet files using grid partitioning
 tf <- tempfile()

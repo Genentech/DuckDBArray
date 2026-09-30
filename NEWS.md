@@ -1,3 +1,16 @@
+# DuckDBArray 0.99.10
+
+## Documentation
+
+- Documented `writeCoordArray()`'s partition sizing for large or sparse
+  arrays: the `grid = NULL` default (`defaultAutoGrid(COO_SparseArray(dim(x)))`)
+  budgets partitions from `dim(x)` alone, with no sparsity awareness; the
+  density correction via `setAutoBlockSize()`/`setAutoBlockShape("scale")`;
+  and the hard ceiling on `block.length` (`.Machine$integer.max`) beyond
+  which no such tuning can reach a given partition-count target.
+  `createDimTables()` cross-references this. Added a matching vignette
+  section with a worked example.
+
 # DuckDBArray 0.99.9
 
 ## Bug fixes

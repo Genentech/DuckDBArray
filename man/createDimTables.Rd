@@ -57,6 +57,13 @@ When the grid contains only one cell, the lookup tables contain only the
 dimension names and their indices. When multiple grid cells are present,
 additional columns indicate which grid group each dimension element belongs
 to.
+
+\code{grid} defaults identically to \code{writeCoordArray}'s default (and
+should normally be the same \code{grid} passed to \code{writeCoordArray},
+so the lookup tables' group identifiers match the partitions actually on
+disk); see \code{\link{writeCoordArray}}'s "Sizing \code{grid} for large or
+sparse arrays" section for why that default is a dense-element budget with
+no sparsity awareness, and how to correct it for a sparse \code{x}.
 }
 \examples{
 # Write the state.x77 matrix to multiple Parquet files using grid partitioning
