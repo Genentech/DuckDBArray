@@ -1,3 +1,27 @@
+# DuckDBArray 0.99.11
+
+## Bug fixes
+
+- `Ops(DuckDBArray, atomic)`/`Ops(atomic, DuckDBArray)` (`DuckDBArray-utils.R`)
+  only ever supported a length-1 `atomic` operand; anything longer fell
+  through to `Ops(DuckDBTable, atomic)`'s scalar-only check and errored with
+  "can only perform binary operations with a scalar value". This was latent
+  but harmless as long as every caller realized a `%*%`/`crossprod` result
+  (itself a lazy `DuckDBMatrix` by design, see 0.99.9) before combining it
+  with a plain vector. CRAN's `irlba` 2.4.1 (2026-10-05) rewrote its Lanczos
+  loop and, while doing so, dropped the `drop()` call that used to wrap
+  `mult()`'s result before the subsequent `F <- F - sub` centering step; for
+  ordinary dense/sparse matrices this is invisible, since `%*%` already
+  returns a realized object, but it left `F` as a lazy `DuckDBMatrix` for
+  `DuckDBMatrix` input, so centered SVDs (`BiocSingular::runSVD(center =
+  TRUE)`, and anything built on it: `scran::fixedPCA()`,
+  `scater::runPCA()`) started failing. Found via BiocDuckDB's
+  `DuckDBIrlbaParam`/SVD composition tests immediately after the 2.4.1
+  release. Fixed by having these two `Ops` methods realize `e1`/`e2` via
+  `as.array()` and hand off to base R whenever the atomic operand isn't a
+  true scalar, since elementwise arithmetic between two plain vectors is
+  never something base R itself defers.
+
 # DuckDBArray 0.99.10
 
 ## Documentation

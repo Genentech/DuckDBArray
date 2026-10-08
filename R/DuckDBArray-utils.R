@@ -133,11 +133,17 @@ setMethod("Ops", c(e1 = "DuckDBArray", e2 = "DuckDBArray"), function(e1, e2) {
 
 #' @export
 setMethod("Ops", c(e1 = "DuckDBArray", e2 = "atomic"), function(e1, e2) {
+    if (length(e2) != 1L) {
+        return(callGeneric(as.array(e1), e2))
+    }
     replaceSlots(e1, seed = callGeneric(e1@seed, e2), check = FALSE)
 })
 
 #' @export
 setMethod("Ops", c(e1 = "atomic", e2 = "DuckDBArray"), function(e1, e2) {
+    if (length(e1) != 1L) {
+        return(callGeneric(e1, as.array(e2)))
+    }
     replaceSlots(e2, seed = callGeneric(e1, e2@seed), check = FALSE)
 })
 
