@@ -1,3 +1,99 @@
+# DuckDBArray 0.99.13
+
+## Bug fixes
+
+- `.check_gram_size()` (`DuckDBMatrix-utils.R`), the size tripwire run before
+  a `crossprod(x)`/`tcrossprod(x)` self-join, called `nzcount(x@seed)` to
+  bound the self-join unconditionally. If `x` was itself the lazy,
+  uncollected result of a prior `crossprod()`/`tcrossprod()` call (these
+  deliberately return a still-lazy `DuckDBMatrix`), `nzcount()` re-executed
+  that entire upstream join + GROUP BY, embedded as a subquery, just to
+  answer a count, e.g. `G <- tcrossprod(pqmat); tcrossprod(G)` ran `pqmat`'s
+  self-join twice. `.check_gram_size()` now first checks a matrix's shape
+  (`prod(dim(x))`), which is always a valid, zero-query upper bound on its
+  true nonzero count, and only falls back to the real `nzcount()` query when
+  that cheap bound alone cannot already prove the operation is within
+  budget. On a chained lazy Gram matrix built from a 600 x 100, 20%-dense
+  fixture, this measures a 580x-840x median wall-clock speedup for the size
+  check alone across repeated runs (15 reps each; see `test-DuckDBMatrix.R`);
+  an earlier pass had reported 205x from a single run. Re-measurement (with
+  the fixture rewritten under a density-aware `writeCoordArray()` block
+  configuration, per the methodology note on the `.marginVars()` entry
+  below) found the new path's cost is a pure shape/metadata check with no
+  query at all (~0.14 ms, flat across every run and both block
+  configurations), so the fix is structural (1 query -> 0 queries) rather
+  than throughput-per-row and is insensitive to Parquet partition/row-group
+  layout: writing the fixture under corrected vs. uncorrected block settings
+  changed the measured speedup only from 813x to 839x, well within run-to-run
+  noise (both writes landed in a single partition at this fixture size, so
+  this particular case never actually exercised the block-shape distortion
+  either way). What *did* move the number run-to-run was ambient DuckDB
+  thread count / machine load, which changes how expensive the eliminated
+  old-path self-join happens to be (580x-840x across sessions with the new
+  path pinned at ~0.14 ms throughout); 205x sits below that range but is the
+  same phenomenon, not evidence of a smaller real effect.
+
+## Performance
+
+- `.duckdb_matmult_copy()` (`DuckDBMatrix-utils.R`), used by the `%*%`/
+  `crossprod(x, v)`-style matrix-vector product pushdown to register the
+  vector operand as a temp table before joining it against the underlying
+  data, called `copy_to()` with its defaults (`analyze = TRUE,
+  in_transaction = TRUE`), adding an unconditional BEGIN/CREATE TEMP TABLE/
+  ANALYZE/COMMIT sequence for a table that is joined exactly once and
+  immediately discarded. It now passes `analyze = FALSE, in_transaction =
+  FALSE` (both plain pass-through arguments `copy_to()`/
+  `db_copy_to.DBIConnection()` already accept, not a new dependency). On the
+  fixture sizes measured (a 500 x 400 and a 20000 x 5000 sparse matrix),
+  this overhead was a small fraction of total `copy_to()` cost (measured
+  1.00-1.04x), so this is primarily a hygiene fix (removing DDL/transaction
+  overhead that buys nothing for a single-use table) rather than a
+  measurable win at these scales; the benefit should grow with call
+  frequency and under lock contention from concurrent matrix-vector
+  products, which were not measured here. `dbplyr::copy_inline()` was
+  considered as an alternative (avoiding the round trip entirely) and
+  rejected per an earlier evaluation: DuckDB's SQL parser re-parsing
+  inlined literals was found to cost more than its native zero-copy
+  dataframe registration via `copy_to()`, making it slower overall despite
+  fewer round trips.
+- `.marginVars()`'s `fill != 0` branch (`DuckDBTable-matrixStats.R`, used by
+  `rowVars`/`colVars`/`rowSds`/`colSds` on a non-zero-filled `DuckDBArray`/
+  `DuckDBMatrix`) was a genuine two-pass query: a `group_by`/`summarize` to
+  compute each group's mean, a `left_join` back to the underlying data, and a
+  second `group_by`/`summarize` on squared deviations, scanning the
+  underlying data twice. It has been generalized to a single query, reusing
+  the same `n = COUNT(*)`, `sum_y = SUM(y)`, `S2 = COALESCE(VAR_SAMP(y), 0)`
+  native aggregates already used by the (already single-pass) `fill == 0`
+  case, and folding in the implicit fill-valued elements analytically via
+  the law of total variance. `VAR_SAMP` (DuckDB's numerically stable
+  aggregate) is still the sole source of the stored-value variance; no
+  hand-rolled sum-of-squares is introduced. On a 2000 x 300, ~60%-dense
+  fixture (`fill = 7`, `rowVars`), this measures a 1.6x-1.7x median
+  wall-clock speedup over the old two-pass query (15-25 reps; see
+  `test-DuckDBTable-matrixStats.R`); on a larger, more realistic single-cell-
+  like 20000 x 5000, 2%-dense fixture, 1.8x-1.85x. An earlier pass had
+  reported 1.57x from the smaller fixture alone.
+
+## Documentation
+
+- Documented a real, previously-unstated inconsistency: a `DuckDBArraySeed`'s
+  `keycols` are implicitly expected to uniquely identify each row (each
+  `(i, j)` key combination appears at most once), but this was not written
+  down anywhere, and the invariant is not enforced at construction time. If
+  it is violated, every materialization path behaves differently: the
+  `dgCMatrix` coercion (`DuckDBArray-class.R`'s
+  `setAs(..., "dgCMatrix", ...)`, via `Matrix::sparseMatrix(..., repr =
+  "C")`) silently SUMS duplicate `(i, j)` entries, while `as.matrix()`,
+  `as(x, "COO_SparseArray")`, and `as(x, "SparseArray")` silently keep the
+  LAST one. Added a "Keycol uniqueness" section to `?DuckDBArray` and
+  `?DuckDBArraySeed`, plus comments at `.collectCOO()` and the `dgCMatrix`
+  coercion itself. This is documentation only: `sparseMatrix(...,
+  use.last.ij = TRUE)` (to make the `dgCMatrix` path match the others) was
+  measured 7-10x slower on the normal, invariant-holding case, and an eager
+  duplicate-key guard was measured to cost 159% of the construction it would
+  protect; both are an unacceptable cost to guard against a case that is
+  supposed to be structurally impossible.
+
 # DuckDBArray 0.99.12
 
 ## Bug fixes

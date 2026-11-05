@@ -49,6 +49,17 @@
 #'   }
 #' }
 #'
+#' @section Keycol uniqueness:
+#' \code{keycols} must uniquely identify each row of \code{conn}: for a
+#' two-dimensional array, each \code{(i, j)} combination of key column values
+#' is expected to appear at most once. This invariant is not currently
+#' enforced at construction time. If it is violated, behavior is unspecified
+#' and differs by representation: coercion to \code{dgCMatrix} (and hence
+#' \code{CsparseMatrix}, via \code{\link[Matrix]{sparseMatrix}}) silently SUMS
+#' the duplicate values, while every other materialization path
+#' (\code{as.matrix()}, \code{as(x, "COO_SparseArray")},
+#' \code{as(x, "SparseArray")}) silently keeps the LAST one.
+#'
 #' @section Accessors:
 #' In the code snippets below, \code{x} is a DuckDBArray object:
 #' \describe{
@@ -263,6 +274,18 @@ setAs("DuckDBArray", "dgCMatrix", function(from) {
     }
     # Covers as(x, "CsparseMatrix") too: the Array -> CsparseMatrix default
     # delegates to as(x, "dgCMatrix").
+    #
+    # If the seed's keycols invariant is violated (a duplicate (i, j) key
+    # pair; see "Keycol uniqueness" in ?DuckDBArraySeed), sparseMatrix()
+    # SUMS the duplicate x values at that position, unlike every other
+    # materialization path (as.matrix(), as(x, "COO_SparseArray"),
+    # as(x, "SparseArray")), which keep the LAST one. This divergence is
+    # intentionally not corrected here: use.last.ij = TRUE makes
+    # sparseMatrix() match the other paths but was measured 7-10x slower on
+    # the normal, invariant-holding case, and an eager duplicate check was
+    # measured to cost 159% of the construction it would protect -- both an
+    # unacceptable cost to guard against a case that is supposed to be
+    # structurally impossible.
     coo <- .collectCOO(seed)
     sparseMatrix(i = coo$nzcoo[, 1L], j = coo$nzcoo[, 2L], x = coo$nzdata,
                  dims = coo$dim, dimnames = coo$dimnames, repr = "C")

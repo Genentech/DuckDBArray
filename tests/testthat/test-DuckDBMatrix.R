@@ -291,6 +291,90 @@ test_that("crossprod/tcrossprod self-join has an OOM size tripwire (LKT-59; R<->
     expect_error(tcrossprod(pqmat), "does not scale")
 })
 
+test_that("gram-size check avoids double-executing a chained lazy self-join (Fix 2)", {
+    pqmat <- DuckDBMatrix(state_path, datacol = "value", row = "index1", col = "index2")
+
+    # trace()'s tracer expression runs outside test_that()'s local frame, so
+    # the call counter has to live in a scope both sides can reach.
+    count_nzcount <- function() get("nzcount_calls", envir = .GlobalEnv)
+    reset_nzcount <- function() assign("nzcount_calls", 0L, envir = .GlobalEnv)
+    reset_nzcount()
+    trace("nzcount", signature = "DuckDBArraySeed",
+         tracer = quote(assign("nzcount_calls",
+                               get("nzcount_calls", envir = .GlobalEnv) + 1L,
+                               envir = .GlobalEnv)),
+         print = FALSE)
+    on.exit(suppressMessages(untrace("nzcount", signature = "DuckDBArraySeed")), add = TRUE)
+
+    # (a) fresh base-table matrix: the shape bound alone proves it's within
+    # budget, so nzcount() is never queried.
+    reset_nzcount()
+    DuckDBArray:::.check_gram_size(pqmat, ncol(pqmat), "tcrossprod")
+    expect_identical(count_nzcount(), 0L)
+
+    # (b) chained lazy Gram matrix: must not re-execute the upstream self-join
+    # just to answer the size check (the reported double-execution bug).
+    G <- tcrossprod(pqmat)
+    reset_nzcount()
+    DuckDBArray:::.check_gram_size(G, ncol(G), "tcrossprod")
+    expect_identical(count_nzcount(), 0L)
+    expect_s4_class(tcrossprod(G), "DuckDBMatrix")
+    expect_identical(count_nzcount(), 0L)
+
+    # (c) limit genuinely exceeded: still a real, byte-identical error.
+    old <- options(DuckDBArray.gram_pair_limit = 1)
+    expect_error(DuckDBArray:::.check_gram_size(pqmat, ncol(pqmat), "tcrossprod"),
+                "does not scale")
+    options(old)
+
+    # (d) shape bound too loose to prove safety on its own (large logical
+    # shape), genuinely sparse: correct fallback to the real nzcount() query,
+    # same verdict as before the fix.
+    nr <- 4000L; nc <- 4000L; nnzn <- 1000L
+    rows <- paste0("r", seq_len(nr)); cols <- paste0("c", seq_len(nc))
+    set.seed(99)
+    big_df <- data.frame(index1 = sample(rows, nnzn, replace = TRUE),
+                         index2 = sample(cols, nnzn, replace = TRUE),
+                         value = round(runif(nnzn, 1, 5), 2))
+    big_df <- big_df[!duplicated(big_df[, 1:2]), ]
+    tf <- tempfile(fileext = ".parquet")
+    arrow::write_parquet(big_df, tf)
+    big_sparse <- as(DuckDBArray(tf, datacol = "value",
+                                 keycols = list(index1 = rows, index2 = cols)),
+                     "DuckDBMatrix")
+    shape_est_pairs <- prod(as.numeric(dim(big_sparse)))^2 / ncol(big_sparse)
+    expect_gt(shape_est_pairs, getOption("DuckDBArray.gram_pair_limit", 5e8))
+
+    reset_nzcount()
+    expect_silent(DuckDBArray:::.check_gram_size(big_sparse, ncol(big_sparse), "tcrossprod"))
+    expect_identical(count_nzcount(), 1L)
+})
+
+test_that("matmult temp-table copy skips ANALYZE and its wrapping transaction (Fix 3)", {
+    # Static check that the fix is actually in place: the vector pushed into
+    # DuckDB for a %*%/crossprod(x, v)-style product is joined exactly once
+    # and immediately discarded, so copy_to()'s defaults (analyze = TRUE,
+    # in_transaction = TRUE) add an unconditional BEGIN/CREATE TEMP TABLE/
+    # ANALYZE/COMMIT sequence that buys nothing.
+    body_text <- deparse(body(DuckDBArray:::.duckdb_matmult_copy))
+    expect_true(any(grepl("analyze = FALSE", body_text, fixed = TRUE)))
+    expect_true(any(grepl("in_transaction = FALSE", body_text, fixed = TRUE)))
+
+    # Numeric check: the product is unaffected by this transport/DDL-only
+    # change. Compare against a base R %*% oracle on a densified fixture,
+    # covering both x %*% v and v %*% x (the two pushdown helpers that call
+    # .duckdb_matmult_copy()).
+    names(dimnames(state.x77)) <- c("index1", "index2")
+    pqmat <- DuckDBMatrix(state_path, datacol = "value",
+                          keycols = lapply(dimnames(state.x77),
+                                           function(x) setNames(seq_along(x), x)))
+    v_col <- seq(-1, 1, length.out = ncol(pqmat))
+    expect_equal(as.vector(pqmat %*% v_col), as.vector(state.x77 %*% v_col))
+
+    v_row <- seq(-1, 1, length.out = nrow(pqmat))
+    expect_equal(as.vector(v_row %*% pqmat), as.vector(v_row %*% state.x77))
+})
+
 test_that("matrix-matrix multiplication works for DuckDBMatrix", {
     names(dimnames(state.x77)) <- c("index1", "index2")
     pqmat <- DuckDBMatrix(state_path, datacol = "value",

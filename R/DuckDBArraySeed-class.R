@@ -51,6 +51,18 @@
 #'   }
 #' }
 #'
+#' @section Keycol uniqueness:
+#' \code{keycols} must uniquely identify each row of \code{conn}: for a
+#' two-dimensional array, each \code{(i, j)} combination of key column values
+#' is expected to appear at most once. This invariant is not currently
+#' enforced at construction time. If it is violated, behavior is unspecified
+#' and differs by representation: coercion of the owning
+#' \link{DuckDBArray}/\link{DuckDBMatrix} to \code{dgCMatrix} (and hence
+#' \code{CsparseMatrix}, via \code{\link[Matrix]{sparseMatrix}}) silently SUMS
+#' the duplicate values, while every other materialization path
+#' (\code{as.matrix()}, \code{as(x, "COO_SparseArray")},
+#' \code{as(x, "SparseArray")}) silently keeps the LAST one.
+#'
 #' @section Accessors:
 #' In the code snippets below, \code{x} is a DuckDBArraySeed object:
 #' \describe{
@@ -316,6 +328,17 @@ setReplaceMethod("dimnames", "DuckDBArraySeed", function(x, value) {
 # for. Assumes an undropped seed (callers defer to the default coercion when
 # x@drop is TRUE). Returns list(nzcoo, nzdata, dim, dimnames); nzcoo holds
 # 1-based integer positions, one column per key dimension.
+#
+# Assumes the seed's keycols invariant holds (each (i, j, ...) key
+# combination identifies at most one stored row -- see "Keycol uniqueness"
+# in ?DuckDBArraySeed). This is not checked here. If it is violated, nzcoo/
+# nzdata simply contain one row per duplicate as collected, and what a
+# caller ends up with differs by the target representation it builds: the
+# dgCMatrix coercion (setAs("DuckDBArray", "dgCMatrix", ...) in
+# DuckDBArray-class.R, via Matrix::sparseMatrix(..., repr = "C")) silently
+# SUMS duplicate (i, j) entries, while the COO_SparseArray/COO_SparseMatrix
+# coercions and the default as.matrix()/SparseArray path silently keep the
+# LAST one.
 .collectCOO <- function(x) {
     index <- .extract_array_index(x, vector("list", nkey(x@table)))
     dimnames <- lapply(index, function(y) names(y) %||% y)

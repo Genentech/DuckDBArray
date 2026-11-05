@@ -73,6 +73,19 @@ objects work on DuckDBArray objects.
 }
 }
 
+\section{Keycol uniqueness}{
+
+\code{keycols} must uniquely identify each row of \code{conn}: for a
+two-dimensional array, each \code{(i, j)} combination of key column values
+is expected to appear at most once. This invariant is not currently
+enforced at construction time. If it is violated, behavior is unspecified
+and differs by representation: coercion to \code{dgCMatrix} (and hence
+\code{CsparseMatrix}, via \code{\link[Matrix]{sparseMatrix}}) silently SUMS
+the duplicate values, while every other materialization path
+(\code{as.matrix()}, \code{as(x, "COO_SparseArray")},
+\code{as(x, "SparseArray")}) silently keeps the LAST one.
+}
+
 \section{Accessors}{
 
 In the code snippets below, \code{x} is a DuckDBArray object:

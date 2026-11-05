@@ -384,7 +384,7 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
 })
 
 #' @importClassesFrom DuckDBDataFrame DuckDBTable
-#' @importFrom dplyr group_by left_join n summarize
+#' @importFrom dplyr group_by n summarize
 #' @importFrom DuckDBDataFrame tblconn
 #' @importFrom S4Vectors new2
 #' @importFrom stats setNames
@@ -393,59 +393,46 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
     datacols <- x@datacols
-    nfill <- call("(", call("-", k, call("n")))
 
-    # For fill == 0 (sparse matrices), use single-pass VAR_SAMP optimization
-    # Formula: (VAR_SAMP(y) * (n-1) + sum_y² * (1/n - 1/k)) / (k-1)
-    # This leverages DuckDB's numerically stable VAR_SAMP and reduces Parquet scans
-    if (fill == 0) {
-        conn <- tblconn(x, select = FALSE)
-        aggr <- setNames(lapply(names(datacols), function(nm) {
-            y <- datacols[[nm]]
-            n <- call("n")
-            sum_y <- call("sum", y, na.rm = TRUE)
-            var_samp <- call("var_samp", y)
-
-            # (VAR_SAMP * (n-1) + sum_y² * (1/n - 1/k)) / (k-1)
-            # COALESCE handles edge case where n=1 (VAR_SAMP returns NULL)
-            var_samp_term <- call("*", call("coalesce", var_samp, 0),
-                                  call("(", call("-", n, 1L)))
-            sum_sq_term <- call("*", call("*", sum_y, sum_y),
-                               call("(", call("-", call("/", 1, n), call("/", 1, k))))
-            expr <- call("/", call("(", call("+", var_samp_term, sum_sq_term)), k - 1L)
-            .na_rm_guard(expr, y, na.rm)
-        }), names(datacols))
-
-        conn <- summarize(group_by(conn, !!!groups), !!!aggr)
-        datacols <- as.expression(setNames(lapply(names(aggr), as.name), names(aggr)))
-        return(new2("DuckDBTable", conn = conn, datacols = datacols, keycols = keycols, check = FALSE))
-    }
-
-    # For fill != 0, use two-pass approach (original implementation)
-    aggr <- setNames(lapply(datacols, function(y)
-                   call("/",
-                        call("(",
-                             call("+",
-                                  call("sum", y, na.rm = TRUE),
-                                  call("*", fill, nfill))),
-                        k)), names(datacols))
+    # Single-pass VAR_SAMP optimization, for any fill value, via the law of
+    # total variance. The native aggregates n = COUNT(*) (stored rows),
+    # sum_y = SUM(y), and S2 = COALESCE(VAR_SAMP(y), 0) are computed once per
+    # group in ONE query; the k - n implicit fill-valued elements (positions
+    # that are not stored rows) are folded in analytically instead of via a
+    # left_join back to the underlying data followed by a second GROUP BY.
+    #
+    # Writing ybar = sum_y / n (mean of the n stored values) and
+    # mu = (sum_y + fill * (k - n)) / k (mean over all k elements), the decomposition is
+    #   sum_sq_dev_full =
+    #       (n - 1) * S2 + n * (ybar - mu)^2 + (k - n) * (fill - mu)^2
+    #   var = sum_sq_dev_full / (k - 1)
+    # Both (ybar - mu) and (fill - mu) collapse to exact multiples of the
+    # same quantity d = ybar - fill:
+    #   ybar - mu = (k - n) / k * d,   fill - mu = -(n / k) * d
+    # so n * (ybar-mu)^2 + (k-n) * (fill-mu)^2 == d^2 * n * (k-n) / k. This
+    # avoids ever forming mu itself, which (for fill close to the true mean)
+    # would need the much larger quantities sum_y/n and fill * (k-n) / k to
+    # nearly cancel; canceling ybar directly against fill in d is the one
+    # cancellation this computation cannot avoid (it reflects a genuine fact
+    # about the data), and is strictly more precise than going through mu.
+    # When fill == 0, d == ybar and this reduces algebraically to the
+    # previous closed form
+    # (VAR_SAMP(y) * (n-1) + sum_y^2 * (1/n - 1/k)) / (k-1); see
+    # test-DuckDBTable-matrixStats.R for the regression check.
     conn <- tblconn(x, select = FALSE)
-    mean_names <- vapply(names(aggr), function(nm) {
-        tail(make.unique(c(colnames(conn), paste0(nm, "_mean")), sep = "_"), 1L)
-    }, character(1L))
-    names(aggr) <- mean_names
-
-    conn <- left_join(conn, summarize(group_by(conn, !!!groups), !!!aggr), by = names(keycols))
-
     aggr <- setNames(lapply(names(datacols), function(nm) {
         y <- datacols[[nm]]
-        y_mean <- as.name(mean_names[[nm]])
-        y_mean_agg <- call("any_value", y_mean)
-        dev <- call("(", call("-", y, y_mean))
-        sum_dev_sq <- call("sum", call("*", dev, dev), na.rm = TRUE)
-        fill_dev <- call("(", call("-", fill, y_mean_agg))
-        zero_contrib <- call("*", call("(", call("*", fill_dev, fill_dev)), nfill)
-        expr <- call("/", call("(", call("+", sum_dev_sq, zero_contrib)), k - 1L)
+        n <- call("n")
+        sum_y <- call("sum", y, na.rm = TRUE)
+        s2 <- call("coalesce", call("var_samp", y), 0)
+        nfill <- call("(", call("-", k, n))
+
+        d <- call("(", call("-", call("(", call("/", sum_y, n)), fill))
+        fill_term <- call("/", call("*", call("*", d, d), call("*", n, nfill)), k)
+        s2_term <- call("*", call("(", call("-", n, 1L)), s2)
+        sum_sq_dev_full <- call("+", s2_term, fill_term)
+
+        expr <- call("/", call("(", sum_sq_dev_full), k - 1L)
         .na_rm_guard(expr, y, na.rm)
     }), names(datacols))
 

@@ -83,8 +83,14 @@ NULL
 #' @importFrom dplyr copy_to
 #' @importFrom dbplyr remote_con
 .duckdb_matmult_copy <- function(conn, df) {
+    # This temp table is joined exactly once and then discarded, so ANALYZE
+    # (gathering statistics to inform the query planner on future reuse) and
+    # wrapping the copy in its own transaction buy nothing here; both are
+    # plain pass-through arguments copy_to()/db_copy_to.DBIConnection()
+    # already accept, not a new dependency.
     copy_to(remote_con(conn), df, name = .duckdb_matmult_tmp_counter(),
-            temporary = TRUE, overwrite = TRUE)
+            temporary = TRUE, overwrite = TRUE,
+            analyze = FALSE, in_transaction = FALSE)
 }
 
 .get_matrix_keycols <- function(table) {
@@ -210,9 +216,26 @@ NULL
 .GRAM_PAIR_LIMIT <- 5e8
 
 # Trip a clear error BEFORE a Gram self-join OOMs.
+#
+# x's shape (prod(dim(x))) is always a valid, zero-query upper bound on its
+# true nonzero count, since nzcount(x@seed) <= prod(dim(x)) always holds. If
+# that shape bound alone already proves the self-join is within budget, skip
+# the real nzcount(x@seed) query entirely. This matters because x can itself
+# be the lazy, uncollected result of a prior crossprod()/tcrossprod() call
+# (these deliberately return a still-lazy DuckDBMatrix); nzcount() on such an
+# x would otherwise re-execute that entire upstream join + GROUP BY, embedded
+# as a subquery, just to answer a count, e.g.
+# G <- tcrossprod(pqmat); tcrossprod(G) would run pqmat's self-join twice.
+# Only pay for the real nzcount() query when the cheap shape bound alone
+# cannot already prove the operation is safe.
 .check_gram_size <- function(x, contracted_dim, op) {
-    nnz <- as.numeric(nzcount(x@seed))
     limit <- getOption("DuckDBArray.gram_pair_limit", .GRAM_PAIR_LIMIT)
+    shape_bound <- prod(as.numeric(dim(x)))
+    shape_est_pairs <- (shape_bound * shape_bound) / max(as.numeric(contracted_dim), 1)
+    if (shape_est_pairs <= limit) {
+        return(invisible(NULL))
+    }
+    nnz <- as.numeric(nzcount(x@seed))
     est_pairs <- (nnz * nnz) / max(as.numeric(contracted_dim), 1)
     if (est_pairs > limit) {
         stop(sprintf(
