@@ -22,7 +22,8 @@
 Method return types are documented in the sections above.
 }
 \description{
-Row / column summarization methods for \linkS4class{DuckDBTable} objects.
+Row / column summarization methods for
+\link[DuckDBDataFrame]{DuckDBTable-class} objects.
 }
 \section{Row / Column Summarization Methods}{
 
@@ -129,7 +130,7 @@ colMeans(tbl)
 }
 \seealso{
 \itemize{
-  \item \code{\link{DuckDBTable-class}} for the main class
+  \item \code{\link[DuckDBDataFrame]{DuckDBTable}} for the main class
   \item \code{\link[S4Vectors]{RectangularData}} for the base class
 }
 }

@@ -201,7 +201,7 @@ function(conn, datacol, row, col, keycols = c(row, col), dimtbls = NULL, type = 
 
 #' @export
 setMethod("[", "DuckDBMatrix", function(x, i, j, ..., drop = TRUE) {
-    Nindex <- S4Arrays:::extract_Nindex_from_syscall(sys.call(), parent.frame())
+    Nindex <- .extract_Nindex_from_syscall(sys.call(), parent.frame())
     seed <- .subset_DuckDBArraySeed(x@seed, Nindex = Nindex, drop = drop)
     if (length(dim(seed)) == 1L) {
         DuckDBArray(seed)

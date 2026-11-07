@@ -35,7 +35,7 @@ Either \code{"binomial"} (default) or \code{"poisson"}.}
 \item{...}{Additional arguments (currently unused).}
 
 \item{grid}{For \code{DelayedMatrix} objects, an optional
-\code{\linkS4class{ArrayGrid}} object specifying the block structure.
+\code{\link[S4Arrays]{ArrayGrid}} object specifying the block structure.
 Defaults to \code{\link[DelayedArray]{colAutoGrid}(x)} for column-wise
 processing since deviance is additive across cells.}
 

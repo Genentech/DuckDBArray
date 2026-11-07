@@ -1,3 +1,15 @@
+# DuckDBArray 0.99.14
+
+## Bug fixes
+
+- Fixed two Bioconductor `nebbiolo2` build-report `NOTE`s. Vendored a local
+  `.extract_Nindex_from_syscall()` helper (used by the `[` methods for
+  `DuckDBArraySeed`, `DuckDBArray`, and `DuckDBMatrix`) instead of calling
+  unexported `S4Arrays:::extract_Nindex_from_syscall()`. Replaced unanchored
+  `\linkS4class{ArrayGrid}`/`\link{DuckDBTable-class}` Rd cross-references
+  (to classes defined in `S4Arrays` and `DuckDBDataFrame` respectively) with
+  explicit `\link[pkg]{...}` package anchors.
+
 # DuckDBArray 0.99.13
 
 ## Bug fixes

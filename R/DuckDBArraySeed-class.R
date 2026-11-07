@@ -487,6 +487,28 @@ DuckDBArraySeed <- function(conn, datacol, keycols, dimtbls = NULL, type = NULL)
 ### Subsetting
 ###
 
+# Vendored from S4Arrays:::extract_Nindex_from_syscall() (unexported; an
+# R CMD check NOTE otherwise flags the ':::' call), which reconstructs the
+# per-dimension Nindex list from the enclosing `[` method's own call and
+# frame. Kept identical to the original.
+.extract_Nindex_from_syscall <- function(call, eframe) {
+    Nindex <- lapply(seq_len(length(call) - 2L), function(i) {
+        subscript <- call[[2L + i]]
+        if (missing(subscript))
+            return(NULL)
+        subscript <- eval(subscript, envir = eframe, enclos = eframe)
+        if (is.null(subscript))
+            return(integer(0))
+        subscript
+    })
+    argnames <- tail(names(call), n = -2L)
+    if (!is.null(argnames))
+        Nindex <- Nindex[!(argnames %in% c("drop", "exact", "value"))]
+    if (length(Nindex) == 1L && is.null(Nindex[[1L]]))
+        Nindex <- Nindex[0L]
+    Nindex
+}
+
 #' @importFrom DuckDBDataFrame nkey keynames keydimnames
 .subset_DuckDBArraySeed <- function(x, Nindex, drop) {
     table <- x@table
@@ -511,7 +533,7 @@ DuckDBArraySeed <- function(conn, datacol, keycols, dimtbls = NULL, type = NULL)
 #' @export
 #' @importFrom S4Vectors isTRUEorFALSE
 setMethod("[", "DuckDBArraySeed", function(x, i, j, ..., drop = TRUE) {
-    Nindex <- S4Arrays:::extract_Nindex_from_syscall(sys.call(), parent.frame())
+    Nindex <- .extract_Nindex_from_syscall(sys.call(), parent.frame())
     .subset_DuckDBArraySeed(x, Nindex = Nindex, drop = drop)
 })
 

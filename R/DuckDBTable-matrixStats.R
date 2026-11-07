@@ -1,7 +1,8 @@
 #' DuckDBTable row / column summarization methods
 #'
 #' @description
-#' Row / column summarization methods for \linkS4class{DuckDBTable} objects.
+#' Row / column summarization methods for
+#' \link[DuckDBDataFrame]{DuckDBTable-class} objects.
 #'
 #' @section Row / Column Summarization Methods:
 #' In the code snippets below, \code{x} is a DuckDBTable object:
@@ -96,7 +97,7 @@
 #'
 #' @seealso
 #' \itemize{
-#'   \item \code{\link{DuckDBTable-class}} for the main class
+#'   \item \code{\link[DuckDBDataFrame]{DuckDBTable}} for the main class
 #'   \item \code{\link[S4Vectors]{RectangularData}} for the base class
 #' }
 #'

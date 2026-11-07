@@ -11,7 +11,7 @@
 #'   Either \code{"binomial"} (default) or \code{"poisson"}.
 #' @param ... Additional arguments (currently unused).
 #' @param grid For \code{DelayedMatrix} objects, an optional
-#'   \code{\linkS4class{ArrayGrid}} object specifying the block structure.
+#'   \code{\link[S4Arrays]{ArrayGrid}} object specifying the block structure.
 #'   Defaults to \code{\link[DelayedArray]{colAutoGrid}(x)} for column-wise
 #'   processing since deviance is additive across cells.
 #' @param as.sparse For \code{DelayedMatrix} objects, logical indicating

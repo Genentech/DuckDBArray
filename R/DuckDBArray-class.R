@@ -222,7 +222,7 @@ DuckDBArray <- function(conn, datacol, keycols, dimtbls = NULL, type = NULL) {
 
 #' @export
 setMethod("[", "DuckDBArray", function(x, i, j, ..., drop = TRUE) {
-    Nindex <- S4Arrays:::extract_Nindex_from_syscall(sys.call(), parent.frame())
+    Nindex <- .extract_Nindex_from_syscall(sys.call(), parent.frame())
     replaceSlots(x, seed = .subset_DuckDBArraySeed(x@seed, Nindex = Nindex, drop = drop), check = FALSE)
 })
 
