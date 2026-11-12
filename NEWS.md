@@ -1,3 +1,15 @@
+# DuckDBArray 0.99.15
+
+## Bug fixes
+
+- `.writeEmptyParquet()`/`.writeParquetDataset()` hardcoded
+  `compression = "zstd"`, which errors on a "minimal" `arrow` build without
+  zstd codec support (see `DuckDBDataFrame`#1). Now use
+  `DuckDBDataFrame::resolveParquetCompression()`, which falls back to
+  `snappy` (with no compression level, since a level paired with a
+  non-zstd codec errors on both DuckDB and `arrow`) when zstd is
+  unavailable, and still prefers zstd otherwise.
+
 # DuckDBArray 0.99.14
 
 ## Bug fixes

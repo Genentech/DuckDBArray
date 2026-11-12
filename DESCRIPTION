@@ -1,6 +1,6 @@
 Package: DuckDBArray
-Version: 0.99.14
-Date: 2026-11-07
+Version: 0.99.15
+Date: 2026-11-12
 Title: DuckDB-Backed DelayedArray Implementation
 Description:
     Provides DuckDB-backed implementations of DelayedArray and DelayedMatrix
@@ -39,6 +39,7 @@ Suggests:
     rmarkdown,
     BiocStyle,
     testthat,
+    nanoparquet,
     matrixStats,
     microbenchmark,
     BiocParallel,

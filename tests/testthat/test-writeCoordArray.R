@@ -599,3 +599,27 @@ test_that("append contributes multiple new partitions per call", {
     combined <- state.x77[, 1:7, drop = FALSE]
     expect_equal(.rebuildFromCoordTable(tbl, combined), combined)
 })
+
+test_that("writeCoordArray falls back to snappy when zstd is unavailable", {
+    skip_if_not_installed("arrow")
+    skip_if_not_installed("nanoparquet")
+    testthat::local_mocked_bindings(codec_is_available = function(type) FALSE, .package = "arrow")
+
+    .codecsUnder <- function(path) {
+        files <- list.files(path, pattern = "\\.parquet$", recursive = TRUE, full.names = TRUE)
+        unique(unlist(lapply(files, function(f)
+            nanoparquet::read_parquet_metadata(f)$column_chunks$codec)))
+    }
+
+    # non-empty input: .writeParquetDataset()
+    path1 <- file.path(tempfile(), "nonzero")
+    writeCoordArray(state.x77, path1,
+                    grid = RegularArrayGrid(dim(state.x77), dim(state.x77)))
+    expect_identical(.codecsUnder(path1), "SNAPPY")
+
+    # all-zero input: .writeEmptyParquet()
+    m <- matrix(0L, nrow = 3L, ncol = 4L)
+    path2 <- file.path(tempfile(), "zeros")
+    writeCoordArray(m, path2, grid = RegularArrayGrid(dim(m), dim(m)))
+    expect_identical(.codecsUnder(path2), "SNAPPY")
+})

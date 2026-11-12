@@ -94,6 +94,7 @@ function(coords_df, path, indexcols, datacol, schema, ...)
 # Write an empty coord-format parquet file (preserves the schema) at
 # path/part-0.parquet. Refuses to overwrite an existing file.
 #' @importFrom arrow write_parquet
+#' @importFrom DuckDBDataFrame resolveParquetCompression
 .writeEmptyParquet <- function(lst, path, ...) {
     if (!dir.exists(path)) {
         dir.create(path, recursive = TRUE)
@@ -103,8 +104,10 @@ function(coords_df, path, indexcols, datacol, schema, ...)
         stop("target file already exists: ", target,
              " (refusing to overwrite)")
     }
+    cmp <- resolveParquetCompression()
     write_parquet(lst, target,
-                  compression = "zstd", compression_level = 3L, ...)
+                  compression = cmp[["compression"]],
+                  compression_level = cmp[["compression_level"]], ...)
 }
 
 # Write a non-empty coord-format block as a parquet dataset under
@@ -134,9 +137,13 @@ function(coords_df, path, indexcols, datacol, schema, ...)
 #   and the fastest selective gene queries. See duckdb's
 #   storage_info.hpp / vector_size.hpp.
 #' @importFrom arrow write_dataset
+#' @importFrom DuckDBDataFrame resolveParquetCompression
 .writeParquetDataset <- function(lst, path, ...) {
-    args <- list(lst, path, format = "parquet", compression = "zstd",
-                 compression_level = 3L, partitioning = NULL,
+    cmp <- resolveParquetCompression()
+    args <- list(lst, path, format = "parquet",
+                 compression = cmp[["compression"]],
+                 compression_level = cmp[["compression_level"]],
+                 partitioning = NULL,
                  min_rows_per_group = 491520L,
                  write_statistics = TRUE, ...)
     if (!"existing_data_behavior" %in% names(args)) {

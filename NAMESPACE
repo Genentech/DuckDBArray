@@ -114,6 +114,7 @@ importFrom(DuckDBDataFrame,
   nkeydim,
   quoteSQLColumns,
   reconcileParquetSchema,
+  resolveParquetCompression,
   sql_call,
   tblconn,
   validateAppendOffset
