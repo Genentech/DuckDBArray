@@ -226,3 +226,32 @@ test_that("na.rm semantics are preserved by the merged single-pass formula", {
     df_true <- .collect_margin(ans_true, "idx1")
     expect_false(is.na(df_true$value[df_true$idx1 == "r1"]))
 })
+
+test_that("na.rm = TRUE leaves stored NA values out of means and variances", {
+    m <- matrix(c(1, 0, 3, 4,
+                  2, 2, NA, 0,
+                  0, 5, 1, 1), nrow = 3, byrow = TRUE,
+                dimnames = list(idx1 = paste0("r", 1:3), idx2 = paste0("c", 1:4)))
+    df <- do.call(expand.grid, c(dimnames(m), stringsAsFactors = FALSE))
+    df$value <- as.vector(m)
+    df <- df[is.na(df$value) | df$value != 0, ]
+    tf <- tempfile(fileext = ".parquet")
+    on.exit(unlink(tf))
+    arrow::write_parquet(df, tf)
+    mat <- as(DuckDBArray(tf, datacol = "value", keycols = dimnames(m)), "DuckDBMatrix")
+
+    expect_equal(as.vector(rowMeans(mat, na.rm = TRUE)),
+                 as.vector(rowMeans(m, na.rm = TRUE)))
+    expect_equal(as.vector(colMeans(mat, na.rm = TRUE)),
+                 as.vector(colMeans(m, na.rm = TRUE)))
+    expect_equal(as.vector(rowVars(mat, na.rm = TRUE)),
+                 as.vector(MatrixGenerics::rowVars(m, na.rm = TRUE)))
+    expect_equal(as.vector(colVars(mat, na.rm = TRUE)),
+                 as.vector(MatrixGenerics::colVars(m, na.rm = TRUE)))
+    expect_equal(as.vector(rowSds(mat, na.rm = TRUE)),
+                 as.vector(MatrixGenerics::rowSds(m, na.rm = TRUE)))
+
+    # without na.rm the margins with an NA are still NA
+    expect_true(is.na(rowMeans(mat)[2L]))
+    expect_true(is.na(colVars(mat)[3L]))
+})

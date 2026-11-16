@@ -173,6 +173,13 @@ NULL
     call("ifelse", has_na, NA_real_, expr)
 }
 
+# Number of non-missing elements along a margin of extent k: k minus the
+# stored rows whose value is NA
+.nonMissing <- function(y, k) {
+    n_na <- call("sum", call("as.integer", call("is.na", y)), na.rm = TRUE)
+    call("(", call("-", k, n_na))
+}
+
 #' @importClassesFrom DuckDBDataFrame DuckDBTable
 #' @importFrom dplyr group_by n summarize
 #' @importFrom DuckDBDataFrame tblconn
@@ -267,9 +274,12 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
     datacols <- x@datacols
+    # with na.rm = TRUE, stored NA values are dropped from the count too
     if (fill == 0) {
         aggr <- lapply(datacols, function(y)
-                       .na_rm_guard(call("/", call("sum", y, na.rm = TRUE), k),
+                       .na_rm_guard(call("/",
+                                         call("coalesce", call("sum", y, na.rm = TRUE), 0),
+                                         .nonMissing(y, k)),
                                     y, na.rm))
     } else {
         aggr <- lapply(datacols, function(y)
@@ -277,11 +287,11 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
                             call("/",
                                  call("(",
                                       call("+",
-                                           call("sum", y, na.rm = TRUE),
+                                           call("coalesce", call("sum", y, na.rm = TRUE), 0),
                                            call("*",
                                                 fill,
                                                 call("(", call("-", k, call("n")))))),
-                                 k),
+                                 .nonMissing(y, k)),
                             y, na.rm))
     }
     aggr <- setNames(aggr, names(datacols))
@@ -423,17 +433,21 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
     conn <- tblconn(x, select = FALSE)
     aggr <- setNames(lapply(names(datacols), function(nm) {
         y <- datacols[[nm]]
-        n <- call("n")
+        # n counts the stored non-NA values and kk all non-NA elements, so
+        # that with na.rm = TRUE the stored NA values are left out entirely
+        n <- call("count", y)
+        kk <- .nonMissing(y, k)
         sum_y <- call("sum", y, na.rm = TRUE)
         s2 <- call("coalesce", call("var_samp", y), 0)
-        nfill <- call("(", call("-", k, n))
+        nfill <- call("(", call("-", k, call("n")))
 
-        d <- call("(", call("-", call("(", call("/", sum_y, n)), fill))
-        fill_term <- call("/", call("*", call("*", d, d), call("*", n, nfill)), k)
+        d <- call("coalesce",
+                  call("(", call("-", call("(", call("/", sum_y, n)), fill)), 0)
+        fill_term <- call("/", call("*", call("*", d, d), call("*", n, nfill)), kk)
         s2_term <- call("*", call("(", call("-", n, 1L)), s2)
         sum_sq_dev_full <- call("+", s2_term, fill_term)
 
-        expr <- call("/", call("(", sum_sq_dev_full), k - 1L)
+        expr <- call("/", call("(", sum_sq_dev_full), call("(", call("-", kk, 1L)))
         .na_rm_guard(expr, y, na.rm)
     }), names(datacols))
 
