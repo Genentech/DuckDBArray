@@ -138,6 +138,13 @@ NULL
     invisible(fill)
 }
 
+# The variance of a margin whose elements are all the fill value: 0 when the
+# margin has several elements and undefined when it has one. A margin with no
+# stored value has no row in the result, so this is the value it is padded with.
+.varFill <- function(x, k) {
+    if (k > 1) .coltypeFillVector(coltypes(x@table)) else NA_real_
+}
+
 #' @export
 #' @importFrom MatrixGenerics rowCounts
 setMethod("rowCounts", "DuckDBArraySeed",
@@ -247,8 +254,9 @@ setMethod("colSums", "DuckDBArraySeed", function(x, na.rm = FALSE, dims = 1, fil
 setMethod("rowSds", "DuckDBArraySeed",
 function(x, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
     .checkSeedFill(x, fill)
+    out_fill <- .varFill(x, prod(tail(dim(x), - dims)))
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
-                 fill = .coltypeFillVector(coltypes(x@table)), check = FALSE)
+                 fill = out_fill, check = FALSE)
 })
 
 #' @export
@@ -256,8 +264,9 @@ function(x, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
 setMethod("colSds", "DuckDBArraySeed",
 function(x, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
     .checkSeedFill(x, fill)
+    out_fill <- .varFill(x, prod(head(dim(x), dims)))
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
-                 fill = .coltypeFillVector(coltypes(x@table)), check = FALSE)
+                 fill = out_fill, check = FALSE)
 })
 
 #' @export
@@ -265,8 +274,9 @@ function(x, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
 setMethod("rowVars", "DuckDBArraySeed",
 function(x, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
     .checkSeedFill(x, fill)
+    out_fill <- .varFill(x, prod(tail(dim(x), - dims)))
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
-                 fill = .coltypeFillVector(coltypes(x@table)), check = FALSE)
+                 fill = out_fill, check = FALSE)
 })
 
 #' @export
@@ -274,6 +284,7 @@ function(x, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
 setMethod("colVars", "DuckDBArraySeed",
 function(x, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
     .checkSeedFill(x, fill)
+    out_fill <- .varFill(x, prod(head(dim(x), dims)))
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
-                 fill = .coltypeFillVector(coltypes(x@table)), check = FALSE)
+                 fill = out_fill, check = FALSE)
 })

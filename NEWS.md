@@ -17,6 +17,15 @@
   whose stored values are all `NA`, where base R gives 0, and, with a non-zero
   `fill`, lost the contribution of the elements that are not stored. The empty
   sum was `NULL` in SQL. It is now 0, so the sum is that of the fill alone.
+- `rowVars()`, `colVars()`, `rowSds()` and `colSds()` returned 0 for a margin
+  with one element in which no value is stored, such as a row of a matrix with a
+  single column, where base R gives `NA` because a variance needs two values. A
+  margin with no stored value has no row in the grouped result and is padded with
+  the value of a margin in which every element is the fill. That value is 0 when
+  the margin has several elements and is now `NA` when it has one. The number of
+  elements is that of the trailing dimensions for the row functions and of the
+  leading dimensions for the column functions, so it also holds for an array
+  with `dims` greater than 1.
 
 ## Testing
 
@@ -25,6 +34,9 @@
   functions with a non-zero `fill` against a dense matrix that holds stored `NA`
   values, and check the sums of a margin with only `NA` values. They fail on the
   previous code.
+- New tests compare the variances and standard deviations of one-column,
+  one-row and all-zero margins, with and without `na.rm`, and of a 3-dimensional
+  array with `dims = 2`, against `matrixStats`. They fail on the previous code.
 
 # DuckDBArray 0.99.16
 

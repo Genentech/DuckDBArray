@@ -356,3 +356,53 @@ test_that("rowSums and colSums with na.rm = TRUE count a margin of only NA value
     .expect_same_stat(colSums(mat, na.rm = TRUE)[1:3], colSums(m, na.rm = TRUE)[1:3])
     .expect_same_stat(rowSums(mat), rowSums(m))
 })
+
+.array_fixture <- function(a) {
+    df <- do.call(expand.grid, c(dimnames(a), stringsAsFactors = FALSE))
+    df$value <- as.vector(a)
+    df <- df[is.na(df$value) | df$value != 0, ]
+    tf <- tempfile(fileext = ".parquet")
+    arrow::write_parquet(df, tf)
+    list(arr = DuckDBArray(tf, datacol = "value", keycols = dimnames(a)), path = tf)
+}
+
+test_that("variances of a margin with one element are NA, also when nothing is stored", {
+    # a margin with no stored value has no row in the grouped result and is padded
+    # with the value of an all-fill margin: 0 for several elements, NA for one
+    one_col <- matrix(c(1, 0, NA, 0), nrow = 4, ncol = 1,
+                      dimnames = list(idx1 = paste0("r", 1:4), idx2 = "c1"))
+    one_row <- matrix(c(2, 0, 3), nrow = 1, ncol = 3,
+                      dimnames = list(idx1 = "r1", idx2 = paste0("c", 1:3)))
+    two_col <- matrix(c(5, 0, 0, 0, 0, 0), nrow = 3, ncol = 2,
+                      dimnames = list(idx1 = paste0("r", 1:3), idx2 = paste0("c", 1:2)))
+    for (na.rm in c(FALSE, TRUE)) {
+        for (m in list(one_col, one_row, two_col)) {
+            fx <- .na_matrix_fixture(m)
+            mat <- fx$mat
+            .expect_same_stat(rowVars(mat, na.rm = na.rm),
+                              MatrixGenerics::rowVars(m, na.rm = na.rm))
+            .expect_same_stat(rowSds(mat, na.rm = na.rm),
+                              MatrixGenerics::rowSds(m, na.rm = na.rm))
+            .expect_same_stat(colVars(mat, na.rm = na.rm),
+                              MatrixGenerics::colVars(m, na.rm = na.rm))
+            .expect_same_stat(colSds(mat, na.rm = na.rm),
+                              MatrixGenerics::colSds(m, na.rm = na.rm))
+            unlink(fx$path)
+        }
+    }
+})
+
+test_that("variances over the trailing dimensions of an array use their extent for the padding", {
+    # dims = 2 leaves the third dimension as the margin extent
+    a2 <- array(c(1, 0, 0, 0, 0, 0, 0, 2), c(2, 2, 2),
+                dimnames = list(idx1 = c("a", "b"), idx2 = c("c", "d"), idx3 = c("e", "f")))
+    a1 <- array(c(1, 0, 0, 0), c(2, 2, 1),
+                dimnames = list(idx1 = c("a", "b"), idx2 = c("c", "d"), idx3 = "e"))
+    for (a in list(a2, a1)) {
+        fx <- .array_fixture(a)
+        on.exit(unlink(fx$path), add = TRUE)
+        want <- MatrixGenerics::rowVars(matrix(a, nrow = 4L))
+        .expect_same_stat(rowVars(fx$arr, dims = 2), want)
+        .expect_same_stat(rowSds(fx$arr, dims = 2), sqrt(want))
+    }
+})
