@@ -1,3 +1,31 @@
+# DuckDBArray 0.99.17
+
+## Bug fixes
+
+- `rowSums()`, `colSums()`, `rowMeans()`, `colMeans()`, `rowMaxs()`, `colMaxs()`,
+  `rowMins()`, `colMins()`, `rowVars()`, `colVars()`, `rowSds()` and `colSds()`
+  on a `DuckDBMatrix` or `DuckDBArray` failed with "formal argument 'fill'
+  matched by multiple actual arguments" whenever `fill` was given, even with the
+  array's own value, as did `rowCounts()` and `colCounts()`. The methods passed
+  the array's `fill` along with the arguments of the call, so a `fill` in the
+  call was passed twice. `fill` is now an argument of these methods. It is the
+  value of the elements that are not stored, which is a property of the array,
+  so a `fill` that equals the array's is accepted and one that differs is an
+  error that says so, because a different value would describe a different
+  array.
+- `rowSums()` and `colSums()` with `na.rm = TRUE` returned `NA` for a margin
+  whose stored values are all `NA`, where base R gives 0, and, with a non-zero
+  `fill`, lost the contribution of the elements that are not stored. The empty
+  sum was `NULL` in SQL. It is now 0, so the sum is that of the fill alone.
+
+## Testing
+
+- New tests check that the margin functions on a `DuckDBMatrix` accept the
+  array's own `fill` and reject another one, compare the table-level margin
+  functions with a non-zero `fill` against a dense matrix that holds stored `NA`
+  values, and check the sums of a margin with only `NA` values. They fail on the
+  previous code.
+
 # DuckDBArray 0.99.16
 
 ## Bug fixes

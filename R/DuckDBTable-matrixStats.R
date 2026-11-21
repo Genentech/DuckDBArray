@@ -362,14 +362,17 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
     datacols <- x@datacols
+    # With na.rm = TRUE a margin whose stored values are all NA has an empty
+    # sum, which SQL gives as NULL and R as 0.
     if (fill == 0) {
         aggr <- lapply(datacols, function(y)
-                       .na_rm_guard(call("sum", y, na.rm = TRUE), y, na.rm))
+                       .na_rm_guard(call("coalesce", call("sum", y, na.rm = TRUE), 0),
+                                    y, na.rm))
     } else {
         aggr <- lapply(datacols, function(y)
                        .na_rm_guard(
                             call("+",
-                                 call("sum", y, na.rm = TRUE),
+                                 call("coalesce", call("sum", y, na.rm = TRUE), 0),
                                  call("*",
                                       fill,
                                       call("(", call("-", k, call("n"))))),

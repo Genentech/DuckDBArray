@@ -124,36 +124,53 @@ NULL
 ### matrixStats methods
 ###
 
+# 'fill' is the value of the elements that are not stored, which is a property
+# of the array. A 'fill' given in the call has to agree with it, since a
+# different value would describe a different array.
+.checkSeedFill <- function(x, fill) {
+    same <- is.atomic(fill) && length(fill) == 1L &&
+        (isTRUE(fill == x@fill) || (is.na(fill) && is.na(x@fill)))
+    if (!same) {
+        stop("'fill' is a property of the array (", format(x@fill),
+             ") and cannot be set to ", format(fill), " in the call",
+             call. = FALSE)
+    }
+    invisible(fill)
+}
+
 #' @export
 #' @importFrom MatrixGenerics rowCounts
 setMethod("rowCounts", "DuckDBArraySeed",
-function(x, value = TRUE, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
+function(x, value = TRUE, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
+    .checkSeedFill(x, fill)
     if (x@fill == value) {
-        fill <- prod(tail(dim(x), - dims))
+        out_fill <- prod(tail(dim(x), - dims))
     } else {
-        fill <- .coltypeFillVector(coltypes(x@table))
+        out_fill <- .coltypeFillVector(coltypes(x@table))
     }
     replaceSlots(x, table = callGeneric(x@table, value = value, na.rm = na.rm, dims = dims, fill = x@fill, ...),
-                 fill = fill, check = FALSE)
+                 fill = out_fill, check = FALSE)
 })
 
 #' @export
 #' @importFrom MatrixGenerics colCounts
 setMethod("colCounts", "DuckDBArraySeed",
-function(x, value = TRUE, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
+function(x, value = TRUE, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
+    .checkSeedFill(x, fill)
     if (x@fill == value) {
-        fill <- prod(head(dim(x), dims))
+        out_fill <- prod(head(dim(x), dims))
     } else {
-        fill <- .coltypeFillVector(coltypes(x@table))
+        out_fill <- .coltypeFillVector(coltypes(x@table))
     }
     replaceSlots(x, table = callGeneric(x@table, value = value, na.rm = na.rm, dims = dims, fill = x@fill, ...),
-                 fill = fill, check = FALSE)
+                 fill = out_fill, check = FALSE)
 })
 
 #' @export
 #' @importFrom MatrixGenerics rowMaxs
 setMethod("rowMaxs", "DuckDBArraySeed",
-function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
+function(x, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
+    .checkSeedFill(x, fill)
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
                  check = FALSE)
 })
@@ -161,21 +178,24 @@ function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
 #' @export
 #' @importFrom MatrixGenerics colMaxs
 setMethod("colMaxs", "DuckDBArraySeed",
-function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
+function(x, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
+    .checkSeedFill(x, fill)
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
                  check = FALSE)
 })
 
 #' @export
 #' @importFrom MatrixGenerics rowMeans
-setMethod("rowMeans", "DuckDBArraySeed", function(x, na.rm = FALSE, dims = 1, ...) {
+setMethod("rowMeans", "DuckDBArraySeed", function(x, na.rm = FALSE, dims = 1, fill = x@fill, ...) {
+    .checkSeedFill(x, fill)
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
                  check = FALSE)
 })
 
 #' @export
 #' @importFrom MatrixGenerics colMeans
-setMethod("colMeans", "DuckDBArraySeed", function(x, na.rm = FALSE, dims = 1, ...) {
+setMethod("colMeans", "DuckDBArraySeed", function(x, na.rm = FALSE, dims = 1, fill = x@fill, ...) {
+    .checkSeedFill(x, fill)
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
                  check = FALSE)
 })
@@ -183,7 +203,8 @@ setMethod("colMeans", "DuckDBArraySeed", function(x, na.rm = FALSE, dims = 1, ..
 #' @export
 #' @importFrom MatrixGenerics rowMins
 setMethod("rowMins", "DuckDBArraySeed",
-function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
+function(x, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
+    .checkSeedFill(x, fill)
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
                  check = FALSE)
 })
@@ -191,37 +212,41 @@ function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
 #' @export
 #' @importFrom MatrixGenerics colMins
 setMethod("colMins", "DuckDBArraySeed",
-function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
+function(x, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
+    .checkSeedFill(x, fill)
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
                  check = FALSE)
 })
 
 #' @export
 #' @importFrom MatrixGenerics rowSums
-setMethod("rowSums", "DuckDBArraySeed", function(x, na.rm = FALSE, dims = 1, ...) {
-    fill <- x@fill
-    if (fill != 0) {
-        fill <- fill * prod(tail(dim(x), - dims))
+setMethod("rowSums", "DuckDBArraySeed", function(x, na.rm = FALSE, dims = 1, fill = x@fill, ...) {
+    .checkSeedFill(x, fill)
+    out_fill <- x@fill
+    if (out_fill != 0) {
+        out_fill <- out_fill * prod(tail(dim(x), - dims))
     }
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
-                 fill = fill, check = FALSE)
+                 fill = out_fill, check = FALSE)
 })
 
 #' @export
 #' @importFrom MatrixGenerics colSums
-setMethod("colSums", "DuckDBArraySeed", function(x, na.rm = FALSE, dims = 1, ...) {
-    fill <- x@fill
-    if (fill != 0) {
-        fill <- fill * prod(head(dim(x), dims))
+setMethod("colSums", "DuckDBArraySeed", function(x, na.rm = FALSE, dims = 1, fill = x@fill, ...) {
+    .checkSeedFill(x, fill)
+    out_fill <- x@fill
+    if (out_fill != 0) {
+        out_fill <- out_fill * prod(head(dim(x), dims))
     }
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
-                 fill = fill, check = FALSE)
+                 fill = out_fill, check = FALSE)
 })
 
 #' @export
 #' @importFrom MatrixGenerics rowSds
 setMethod("rowSds", "DuckDBArraySeed",
-function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
+function(x, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
+    .checkSeedFill(x, fill)
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
                  fill = .coltypeFillVector(coltypes(x@table)), check = FALSE)
 })
@@ -229,7 +254,8 @@ function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
 #' @export
 #' @importFrom MatrixGenerics colSds
 setMethod("colSds", "DuckDBArraySeed",
-function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
+function(x, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
+    .checkSeedFill(x, fill)
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
                  fill = .coltypeFillVector(coltypes(x@table)), check = FALSE)
 })
@@ -237,7 +263,8 @@ function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
 #' @export
 #' @importFrom MatrixGenerics rowVars
 setMethod("rowVars", "DuckDBArraySeed",
-function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
+function(x, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
+    .checkSeedFill(x, fill)
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
                  fill = .coltypeFillVector(coltypes(x@table)), check = FALSE)
 })
@@ -245,7 +272,8 @@ function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
 #' @export
 #' @importFrom MatrixGenerics colVars
 setMethod("colVars", "DuckDBArraySeed",
-function(x, na.rm = FALSE, dims = 1, ..., useNames = TRUE) {
+function(x, na.rm = FALSE, dims = 1, fill = x@fill, ..., useNames = TRUE) {
+    .checkSeedFill(x, fill)
     replaceSlots(x, table = callGeneric(x@table, na.rm = na.rm, dims = dims, fill = x@fill, ...),
                  fill = .coltypeFillVector(coltypes(x@table)), check = FALSE)
 })

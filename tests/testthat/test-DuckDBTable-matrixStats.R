@@ -287,3 +287,72 @@ test_that("na.rm = TRUE margins with too few values match base R", {
     .expect_same_stat(colSds(mat, na.rm = TRUE), MatrixGenerics::colSds(m, na.rm = TRUE))
     .expect_same_stat(rowVars(mat), MatrixGenerics::rowVars(m))
 })
+
+test_that("margin functions on a DuckDBMatrix accept the array's own fill and reject another", {
+    m <- matrix(c(1, 0, 3,
+                  0, 2, 0), nrow = 2, byrow = TRUE,
+                dimnames = list(idx1 = c("r1", "r2"), idx2 = c("c1", "c2", "c3")))
+    fx <- .na_matrix_fixture(m)
+    on.exit(unlink(fx$path))
+    mat <- fx$mat
+
+    fns <- c("rowSums", "colSums", "rowMeans", "colMeans", "rowMaxs", "colMaxs",
+             "rowMins", "colMins", "rowVars", "colVars", "rowSds", "colSds")
+    for (fn in fns) {
+        f <- get(fn)
+        # the array's own fill is accepted and changes nothing
+        expect_identical(f(mat, fill = 0), f(mat), info = fn)
+        expect_identical(f(mat, fill = 0L), f(mat), info = fn)
+        # another fill would describe another array
+        expect_error(f(mat, fill = 2), "property of the array", info = fn)
+    }
+    expect_equal(as.vector(rowMeans(mat, fill = 0)), as.vector(rowMeans(m)))
+    expect_error(rowCounts(mat, fill = 3), "property of the array")
+    expect_error(colCounts(mat, fill = 3), "property of the array")
+    expect_identical(rowCounts(mat, value = 0, fill = 0), rowCounts(mat, value = 0))
+})
+
+test_that("table-level margin functions with a non-zero fill match a dense matrix", {
+    set.seed(2)
+    for (rep in 1:12) {
+        nr <- sample(2:5, 1L)
+        nc <- sample(2:5, 1L)
+        fill <- sample(c(2, -3.5, 7), 1L)
+        m <- matrix(sample(c(0, 0, NA, round(rnorm(3), 3)), nr * nc, TRUE), nr, nc,
+                    dimnames = list(idx1 = paste0("r", seq_len(nr)),
+                                    idx2 = paste0("c", seq_len(nc))))
+        fx <- .na_matrix_fixture(m)
+        tbl <- fx$mat@seed@table
+        dense <- m
+        dense[!is.na(dense) & dense == 0] <- fill
+        # a margin with no stored element has no group in the result
+        stored <- is.na(m) | m != 0
+        for (na.rm in c(FALSE, TRUE)) {
+            for (fn in c("rowMeans", "colMeans", "rowSums", "colSums",
+                         "rowMaxs", "colMaxs", "rowMins", "colMins")) {
+                ans <- get(fn)(tbl, na.rm = na.rm, fill = fill)
+                d <- as.data.frame(dplyr::collect(tblconn(ans)))
+                kc <- setdiff(names(d), "value")
+                got <- d[order(d[[kc[1L]]]), "value"]
+                keep <- if (grepl("^row", fn)) rowSums(stored) > 0 else colSums(stored) > 0
+                .expect_same_stat(got, get(fn)(dense, na.rm = na.rm)[keep])
+            }
+        }
+        unlink(fx$path)
+    }
+})
+
+test_that("rowSums and colSums with na.rm = TRUE count a margin of only NA values as 0", {
+    m <- matrix(c(NA, NA, 0,
+                  1, 0, NA,
+                  0, 0, 0), nrow = 3, byrow = TRUE,
+                dimnames = list(idx1 = paste0("r", 1:3), idx2 = paste0("c", 1:3)))
+    fx <- .na_matrix_fixture(m)
+    on.exit(unlink(fx$path))
+    mat <- fx$mat
+
+    # r3 has nothing stored, so it is not in the grouped result
+    .expect_same_stat(rowSums(mat, na.rm = TRUE)[1:2], rowSums(m, na.rm = TRUE)[1:2])
+    .expect_same_stat(colSums(mat, na.rm = TRUE)[1:3], colSums(m, na.rm = TRUE)[1:3])
+    .expect_same_stat(rowSums(mat), rowSums(m))
+})
