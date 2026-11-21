@@ -226,3 +226,64 @@ test_that("na.rm semantics are preserved by the merged single-pass formula", {
     df_true <- .collect_margin(ans_true, "idx1")
     expect_false(is.na(df_true$value[df_true$idx1 == "r1"]))
 })
+
+.na_matrix_fixture <- function(m) {
+    df <- do.call(expand.grid, c(dimnames(m), stringsAsFactors = FALSE))
+    df$value <- as.vector(m)
+    df <- df[is.na(df$value) | df$value != 0, ]
+    tf <- tempfile(fileext = ".parquet")
+    arrow::write_parquet(df, tf)
+    list(mat = as(DuckDBArray(tf, datacol = "value", keycols = dimnames(m)), "DuckDBMatrix"),
+         path = tf)
+}
+
+.expect_same_stat <- function(got, want) {
+    got <- as.vector(got); want <- as.vector(want)
+    expect_identical(is.nan(got), is.nan(want))
+    expect_identical(is.na(got) & !is.nan(got), is.na(want) & !is.nan(want))
+    expect_equal(got[!is.na(got)], want[!is.na(want)])
+}
+
+test_that("na.rm = TRUE leaves stored NA values out of means and variances", {
+    m <- matrix(c(1, 0, 3, 4,
+                  2, 2, NA, 0,
+                  0, 5, 1, 1), nrow = 3, byrow = TRUE,
+                dimnames = list(idx1 = paste0("r", 1:3), idx2 = paste0("c", 1:4)))
+    fx <- .na_matrix_fixture(m)
+    on.exit(unlink(fx$path))
+    mat <- fx$mat
+
+    expect_equal(as.vector(rowMeans(mat, na.rm = TRUE)), as.vector(rowMeans(m, na.rm = TRUE)))
+    expect_equal(as.vector(colMeans(mat, na.rm = TRUE)), as.vector(colMeans(m, na.rm = TRUE)))
+    expect_equal(as.vector(rowVars(mat, na.rm = TRUE)),
+                 as.vector(MatrixGenerics::rowVars(m, na.rm = TRUE)))
+    expect_equal(as.vector(colVars(mat, na.rm = TRUE)),
+                 as.vector(MatrixGenerics::colVars(m, na.rm = TRUE)))
+    expect_equal(as.vector(rowSds(mat, na.rm = TRUE)),
+                 as.vector(MatrixGenerics::rowSds(m, na.rm = TRUE)))
+
+    # without na.rm the margins with an NA are still NA
+    expect_true(is.na(rowMeans(mat)[2L]))
+    expect_true(is.na(colVars(mat)[3L]))
+})
+
+test_that("na.rm = TRUE margins with too few values match base R", {
+    m <- matrix(c(NA, NA, NA, NA,
+                  0, 0, 7, NA,
+                  1, NA, 0, 4,
+                  2, 0, 0, 0), nrow = 4, byrow = TRUE,
+                dimnames = list(idx1 = paste0("r", 1:4), idx2 = paste0("c", 1:4)))
+    fx <- .na_matrix_fixture(m)
+    on.exit(unlink(fx$path))
+    mat <- fx$mat
+
+    # an all-NA margin has mean NaN and variance NA; DuckDB gives NaN for the
+    # variance's 0/0, which has to come back as NA
+    .expect_same_stat(rowMeans(mat, na.rm = TRUE), rowMeans(m, na.rm = TRUE))
+    .expect_same_stat(rowVars(mat, na.rm = TRUE), MatrixGenerics::rowVars(m, na.rm = TRUE))
+    .expect_same_stat(rowSds(mat, na.rm = TRUE), MatrixGenerics::rowSds(m, na.rm = TRUE))
+    .expect_same_stat(colMeans(mat, na.rm = TRUE), colMeans(m, na.rm = TRUE))
+    .expect_same_stat(colVars(mat, na.rm = TRUE), MatrixGenerics::colVars(m, na.rm = TRUE))
+    .expect_same_stat(colSds(mat, na.rm = TRUE), MatrixGenerics::colSds(m, na.rm = TRUE))
+    .expect_same_stat(rowVars(mat), MatrixGenerics::rowVars(m))
+})

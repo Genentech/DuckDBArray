@@ -1,3 +1,25 @@
+# DuckDBArray 0.99.16
+
+## Bug fixes
+
+- `rowMeans()`, `colMeans()`, `rowVars()`, `colVars()`, `rowSds()` and
+  `colSds()` gave wrong results with `na.rm = TRUE` when the data held stored
+  `NA` values. The `NA` values left the sum but not the count, so a mean was
+  divided by too many elements, and a variance used the full extent of the
+  margin. They now leave the `NA` values out of the count as well, as
+  `matrixStats` does. Reported in #1, with a fix proposed by Buyan Khurelbaatar
+  in #2 that this change builds on.
+- A variance or standard deviation over a margin with fewer than two values
+  left, such as a margin that is all `NA`, came back as `NaN`, because DuckDB
+  returns `NaN` for `0/0`. It is now `NA`, as in `matrixStats`. The mean of
+  such a margin is still `NaN`, which is also what `matrixStats` gives.
+
+## Testing
+
+- New tests compare these six functions with `matrixStats` on matrices with
+  stored `NA` values, an all-`NA` margin, and a margin with a single value,
+  and compare `NA` and `NaN` exactly. They fail on the previous code.
+
 # DuckDBArray 0.99.15
 
 ## Bug fixes

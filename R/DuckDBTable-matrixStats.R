@@ -173,6 +173,13 @@ NULL
     call("ifelse", has_na, NA_real_, expr)
 }
 
+# Number of elements of a margin of extent k that are not NA. The stored rows
+# of a group hold n() values of which count(y) are not NA; the rest of the
+# extent holds the fill value.
+.nonMissing <- function(y, k) {
+    call("(", call("-", k, call("(", call("-", call("n"), call("count", y)))))
+}
+
 #' @importClassesFrom DuckDBDataFrame DuckDBTable
 #' @importFrom dplyr group_by n summarize
 #' @importFrom DuckDBDataFrame tblconn
@@ -267,9 +274,13 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
     datacols <- x@datacols
+    # With na.rm = TRUE the stored NA values leave the denominator as well as
+    # the sum. A margin with no value left gives 0/0 = NaN, as in base R.
     if (fill == 0) {
         aggr <- lapply(datacols, function(y)
-                       .na_rm_guard(call("/", call("sum", y, na.rm = TRUE), k),
+                       .na_rm_guard(call("/",
+                                         call("coalesce", call("sum", y, na.rm = TRUE), 0),
+                                         .nonMissing(y, k)),
                                     y, na.rm))
     } else {
         aggr <- lapply(datacols, function(y)
@@ -277,11 +288,11 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
                             call("/",
                                  call("(",
                                       call("+",
-                                           call("sum", y, na.rm = TRUE),
+                                           call("coalesce", call("sum", y, na.rm = TRUE), 0),
                                            call("*",
                                                 fill,
                                                 call("(", call("-", k, call("n")))))),
-                                 k),
+                                 .nonMissing(y, k)),
                             y, na.rm))
     }
     aggr <- setNames(aggr, names(datacols))
@@ -402,7 +413,9 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
     # that are not stored rows) are folded in analytically instead of via a
     # left_join back to the underlying data followed by a second GROUP BY.
     #
-    # Writing ybar = sum_y / n (mean of the n stored values) and
+    # Here n counts the stored values that are not NA and k the elements that
+    # are not NA (see .nonMissing), so with na.rm = TRUE a stored NA is left out
+    # of every term. Writing ybar = sum_y / n (mean of the n stored values) and
     # mu = (sum_y + fill * (k - n)) / k (mean over all k elements), the decomposition is
     #   sum_sq_dev_full =
     #       (n - 1) * S2 + n * (ybar - mu)^2 + (k - n) * (fill - mu)^2
@@ -423,17 +436,26 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
     conn <- tblconn(x, select = FALSE)
     aggr <- setNames(lapply(names(datacols), function(nm) {
         y <- datacols[[nm]]
-        n <- call("n")
+        # n counts the stored values that are not NA and kk all elements that
+        # are not NA, so that with na.rm = TRUE the stored NA values are left
+        # out of the moments and of the denominator
+        n <- call("count", y)
+        kk <- .nonMissing(y, k)
         sum_y <- call("sum", y, na.rm = TRUE)
         s2 <- call("coalesce", call("var_samp", y), 0)
-        nfill <- call("(", call("-", k, n))
+        nfill <- call("(", call("-", k, call("n")))
 
-        d <- call("(", call("-", call("(", call("/", sum_y, n)), fill))
-        fill_term <- call("/", call("*", call("*", d, d), call("*", n, nfill)), k)
+        d <- call("coalesce",
+                  call("(", call("-", call("(", call("/", sum_y, n)), fill)), 0)
+        fill_term <- call("/", call("*", call("*", d, d), call("*", n, nfill)), kk)
         s2_term <- call("*", call("(", call("-", n, 1L)), s2)
         sum_sq_dev_full <- call("+", s2_term, fill_term)
 
-        expr <- call("/", call("(", sum_sq_dev_full), k - 1L)
+        # a variance needs two values; DuckDB returns NaN for 0/0 where base R
+        # gives NA
+        expr <- call("ifelse", call(">", kk, 1L),
+                     call("/", call("(", sum_sq_dev_full), call("(", call("-", kk, 1L))),
+                     NA_real_)
         .na_rm_guard(expr, y, na.rm)
     }), names(datacols))
 
