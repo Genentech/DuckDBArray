@@ -26,6 +26,22 @@
   elements is that of the trailing dimensions for the row functions and of the
   leading dimensions for the column functions, so it also holds for an array
   with `dims` greater than 1.
+- `rowSums()`, `colSums()`, `rowMeans()`, `colMeans()`, `rowMaxs()`, `colMaxs()`,
+  `rowVars()`, `colVars()`, `rowSds()` and `colSds()` did not drop a stored `NaN`
+  with `na.rm = TRUE`, as base R does, because SQL aggregates skip `NULL` but
+  keep `NaN`. A `NaN` is now treated as missing with `na.rm = TRUE`, as an `NA`
+  is. This applies to a floating point column, the only kind that can hold a
+  `NaN`.
+- With `na.rm = FALSE`, a variance or standard deviation of a margin that holds a
+  `NaN` is now `NA`, as `matrixStats` gives, and a minimum is `NaN`, where DuckDB
+  orders `NaN` above every number and left the smallest other value. A margin
+  that holds both an `NA` and a `NaN` is `NA`; base R gives `NA` or `NaN` for a
+  sum or mean of such a margin depending on the order of the values, and this is
+  not matched.
+- `rowMaxs()`, `colMaxs()`, `rowMins()` and `colMins()` with `na.rm = TRUE`
+  returned `NA` for a margin in which no value is left, such as one made only of
+  `NA` values. They now return `-Inf` for a maximum and `Inf` for a minimum, as
+  base R and `matrixStats` do for an empty set.
 
 ## Testing
 
@@ -37,6 +53,10 @@
 - New tests compare the variances and standard deviations of one-column,
   one-row and all-zero margins, with and without `na.rm`, and of a 3-dimensional
   array with `dims = 2`, against `matrixStats`. They fail on the previous code.
+- New tests compare all twelve margin functions with `matrixStats` on matrices
+  that hold stored `NaN` and `NA` values, with and without `na.rm`, by row and by
+  column, and check the maximum and minimum of a margin with no value left. They
+  fail on the previous code.
 
 # DuckDBArray 0.99.16
 

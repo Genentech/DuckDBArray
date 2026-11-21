@@ -406,3 +406,60 @@ test_that("variances over the trailing dimensions of an array use their extent f
         .expect_same_stat(rowSds(fx$arr, dims = 2), sqrt(want))
     }
 })
+
+.margin_fns <- c("rowSums", "colSums", "rowMeans", "colMeans", "rowMaxs", "colMaxs",
+                 "rowMins", "colMins", "rowVars", "colVars", "rowSds", "colSds")
+
+.margin_ref <- function(fn, m, na.rm) {
+    f <- if (grepl("Vars|Sds", fn)) getExportedValue("MatrixGenerics", fn) else get(fn)
+    f(m, na.rm = na.rm)
+}
+
+test_that("na.rm = TRUE treats a stored NaN as missing, as base R does", {
+    m <- matrix(c(NaN, 1, 0, 2,
+                  3, NaN, 0, NA,
+                  0, 0, 4, 5,
+                  NaN, NaN, NaN, NA), nrow = 4, byrow = TRUE,
+                dimnames = list(idx1 = paste0("r", 1:4), idx2 = paste0("c", 1:4)))
+    for (mm in list(m, t(m))) {
+        names(dimnames(mm)) <- c("idx1", "idx2")
+        fx <- .na_matrix_fixture(mm)
+        for (fn in .margin_fns) {
+            .expect_same_stat(get(fn)(fx$mat, na.rm = TRUE), .margin_ref(fn, mm, TRUE))
+        }
+        unlink(fx$path)
+    }
+})
+
+test_that("na.rm = FALSE gives NaN for a stored NaN, and NA for a variance, as base R does", {
+    m <- matrix(c(NaN, 1, 0, 2,
+                  3, NaN, 0, NaN,
+                  0, 0, 4, 5,
+                  NaN, NaN, NaN, NaN), nrow = 4, byrow = TRUE,
+                dimnames = list(idx1 = paste0("r", 1:4), idx2 = paste0("c", 1:4)))
+    for (mm in list(m, t(m))) {
+        names(dimnames(mm)) <- c("idx1", "idx2")
+        fx <- .na_matrix_fixture(mm)
+        for (fn in .margin_fns) {
+            .expect_same_stat(get(fn)(fx$mat), .margin_ref(fn, mm, FALSE))
+        }
+        unlink(fx$path)
+    }
+    # a minimum is NaN when an element is NaN, though SQL orders NaN above numbers
+    expect_true(is.nan(rowMins(.na_matrix_fixture(m)$mat)[1L]))
+})
+
+test_that("the maximum and minimum of a margin with no value left are -Inf and Inf", {
+    m <- matrix(c(NA, NA, NaN, 0,
+                  1, 2, 3, 4,
+                  NaN, NaN, NaN, NaN), nrow = 3, byrow = TRUE,
+                dimnames = list(idx1 = paste0("r", 1:3), idx2 = paste0("c", 1:4)))
+    fx <- .na_matrix_fixture(m)
+    on.exit(unlink(fx$path))
+    # r3 is made only of NaN, so nothing is left once they are dropped; r1 still
+    # holds a 0 that is not stored, so it is not empty
+    .expect_same_stat(rowMaxs(fx$mat, na.rm = TRUE)[2:3], rowMaxs(m, na.rm = TRUE)[2:3])
+    .expect_same_stat(rowMins(fx$mat, na.rm = TRUE)[2:3], rowMins(m, na.rm = TRUE)[2:3])
+    expect_identical(unname(rowMaxs(fx$mat, na.rm = TRUE)[3L]), -Inf)
+    expect_identical(unname(rowMins(fx$mat, na.rm = TRUE)[3L]), Inf)
+})

@@ -164,12 +164,47 @@ NULL
     list(keycols = keycols, groups = groups, along = along, k = k)
 }
 
-.na_rm_guard <- function(expr, y, na.rm) {
+# Only a floating point column can hold a NaN. The test is is.nan(), which
+# dbplyr writes as a printf() comparison. DuckDB's own isnan() is not used: on a
+# Parquet column that has no NULL it comes back FALSE for a stored NaN in DuckDB
+# 2.0.0, apparently because the file statistics leave NaN out; printf() does not
+# fail that way.
+# printf() cannot format an integer, so the other types are left alone.
+.canHoldNaN <- function(x) {
+    identical(unname(coltypes(x)), "double")
+}
+
+# With na.rm = TRUE a stored NaN is missing, as it is in base R, so it is made
+# NULL and the handling of a stored NA applies to it. SQL aggregates skip NULL
+# but not NaN.
+.marginData <- function(x, na.rm) {
+    datacols <- x@datacols
+    if (isTRUE(na.rm) && .canHoldNaN(x)) {
+        datacols <- lapply(datacols, function(y)
+                           call("ifelse", call("is.nan", y), NA_real_, y))
+    }
+    datacols
+}
+
+# With na.rm = FALSE a margin with a stored NA is NA. A stored NaN gives NaN,
+# which SQL already does for a sum, a mean and a maximum; 'nan' says what else
+# the result has to be: "na" for a variance, which base R gives as NA, and
+# "nan" for a minimum, which SQL leaves as the smallest other value because it
+# orders NaN above every number.
+.na_rm_guard <- function(expr, y, na.rm, nan = c("keep", "na", "nan")) {
+    nan <- match.arg(nan)
     if (isTRUE(na.rm)) {
         return(expr)
     }
-    has_na <- call(">", call("sum", call("as.integer", call("is.na", y)),
-                             na.rm = TRUE), 0L)
+    count_of <- function(test)
+        call(">", call("sum", call("as.integer", test), na.rm = TRUE), 0L)
+    has_na <- count_of(call("is.na", y))
+    if (nan == "na") {
+        has_na <- count_of(call("|", call("is.na", y), call("is.nan", y)))
+    } else if (nan == "nan") {
+        expr <- call("ifelse", count_of(call("is.nan", y)),
+                     dplyr::sql("CAST('NaN' AS DOUBLE)"), expr)
+    }
     call("ifelse", has_na, NA_real_, expr)
 }
 
@@ -190,7 +225,7 @@ function(x, value = TRUE, na.rm = FALSE, dims = 1, fill = 0,
          margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
-    datacols <- x@datacols
+    datacols <- .marginData(x, na.rm)
     if (value != fill) {
         aggr <- lapply(datacols, function(y)
                        .na_rm_guard(call("countif", call("==", call("(", y), value)),
@@ -236,11 +271,13 @@ function(x, value = TRUE, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRU
                         margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
-    datacols <- x@datacols
+    datacols <- .marginData(x, na.rm)
     nfill <- call("(", call("-", k, call("n")))
     aggr <- setNames(lapply(datacols, function(y) {
         stat <- call("max", y, na.rm = TRUE)
-        expr <- call("if", call("==", nfill, 0L), stat, call("greatest", stat, fill))
+        # no value left, as when every element is NA with na.rm = TRUE, is -Inf
+        empty <- call("coalesce", stat, dplyr::sql("CAST('-Infinity' AS DOUBLE)"))
+        expr <- call("if", call("==", nfill, 0L), empty, call("greatest", stat, fill))
         .na_rm_guard(expr, y, na.rm)
     }), names(datacols))
     conn <- summarize(group_by(tblconn(x, select = FALSE), !!!groups), !!!aggr)
@@ -273,7 +310,7 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
                          margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
-    datacols <- x@datacols
+    datacols <- .marginData(x, na.rm)
     # With na.rm = TRUE the stored NA values leave the denominator as well as
     # the sum. A margin with no value left gives 0/0 = NaN, as in base R.
     if (fill == 0) {
@@ -324,12 +361,14 @@ setMethod("colMeans", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill =
                         margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
-    datacols <- x@datacols
+    datacols <- .marginData(x, na.rm)
     nfill <- call("(", call("-", k, call("n")))
     aggr <- setNames(lapply(datacols, function(y) {
         stat <- call("min", y, na.rm = TRUE)
-        expr <- call("if", call("==", nfill, 0L), stat, call("least", stat, fill))
-        .na_rm_guard(expr, y, na.rm)
+        # no value left, as when every element is NA with na.rm = TRUE, is Inf
+        empty <- call("coalesce", stat, dplyr::sql("CAST('Infinity' AS DOUBLE)"))
+        expr <- call("if", call("==", nfill, 0L), empty, call("least", stat, fill))
+        .na_rm_guard(expr, y, na.rm, nan = if (.canHoldNaN(x)) "nan" else "keep")
     }), names(datacols))
     conn <- summarize(group_by(tblconn(x, select = FALSE), !!!groups), !!!aggr)
     datacols <- as.expression(setNames(lapply(names(aggr), as.name), names(aggr)))
@@ -361,7 +400,7 @@ function(x, na.rm = FALSE, dims = 1, fill = 0, ..., useNames = TRUE) {
                         margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
-    datacols <- x@datacols
+    datacols <- .marginData(x, na.rm)
     # With na.rm = TRUE a margin whose stored values are all NA has an empty
     # sum, which SQL gives as NULL and R as 0.
     if (fill == 0) {
@@ -407,7 +446,7 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
                         margin = c("row", "col")) {
     lst <- .marginSetup(x, dims = dims, margin = margin)
     keycols <- lst$keycols; groups <- lst$groups; along <- lst$along; k <- lst$k
-    datacols <- x@datacols
+    datacols <- .marginData(x, na.rm)
 
     # Single-pass VAR_SAMP optimization, for any fill value, via the law of
     # total variance. The native aggregates n = COUNT(*) (stored rows),
@@ -459,7 +498,7 @@ setMethod("colSums", "DuckDBTable", function(x, na.rm = FALSE, dims = 1, fill = 
         expr <- call("ifelse", call(">", kk, 1L),
                      call("/", call("(", sum_sq_dev_full), call("(", call("-", kk, 1L))),
                      NA_real_)
-        .na_rm_guard(expr, y, na.rm)
+        .na_rm_guard(expr, y, na.rm, nan = if (.canHoldNaN(x)) "na" else "keep")
     }), names(datacols))
 
     conn <- summarize(group_by(conn, !!!groups), !!!aggr)
