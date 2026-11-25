@@ -1,3 +1,26 @@
+# DuckDBArray 1.1.1
+
+## Significant changes
+
+- `writeCoordArray()` refuses names of the index columns and of the value column
+  that it used to rename, and says which names are the problem. Before, two
+  names that were equal were made different with `make.unique()`, so
+  `indexcols = c("value", "col")` with `datacol = "value"` was written with the
+  value column as `value_1`, and a reader that looked for `value` found the
+  index. It is now an error when
+  - two of the names are the same up to case, as `Row` and `row` are: DuckDB, which
+    reads the files, binds a column name without regard to the case of the
+    letters A to Z, so a query for one returns the values of the other;
+  - an index name is `NA`, empty, `.` or `..`, or has a `/`, a backslash, a
+    control character or a `=`, as the name of an index column is also the name of
+    a directory (`<index><suffix>=<n>`) when an array is written in a grid;
+  - `datacol` is not a single string; or
+  - with a grid, the value column is named like the column that holds the grid
+    cell of an index, as `row_group` is.
+
+  Names that are not valid R names, as `n cells` and `CD3-positive`, are written
+  as they are. Rename the columns that are refused before writing.
+
 # DuckDBArray 0.99.17
 
 ## Bug fixes
