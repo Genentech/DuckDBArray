@@ -84,6 +84,32 @@ function(max_dim, x, append, along, offset, ndim)
     max_dim
 }
 
+# The names of the index columns and of the value column are the names of
+# columns of a file that DuckDB reads without regard to case, and the names of
+# the index columns are also the names of directories (<index><suffix>=<n>) when
+# a grid is written. They are refused, not renamed, when two are the same up to
+# case, when one is not a name that can be a directory, or when the value column
+# is named like one of the columns that hold the grid cell of an index.
+#' @importFrom DuckDBDataFrame checkParquetColumnNames checkEntryNames
+.checkCoordNames <-
+function(indexcols, datacol, grid, grid_suffix)
+{
+    if (!is.character(indexcols) || !is.character(datacol) || length(datacol) != 1L)
+        stop("'indexcols' must be a character vector and 'datacol' a single string")
+    checkEntryNames("index columns", indexcols)
+    if (any(grepl("=", indexcols, fixed = TRUE)))
+        stop("the names of the index columns become the names of directories, ",
+             "and these cannot: ",
+             paste(sprintf("'%s'", indexcols[grepl("=", indexcols, fixed = TRUE)]),
+                   collapse = ", "),
+             ". A name must not contain '='. Rename them.", call. = FALSE)
+    cols <- c(indexcols, datacol)
+    if (!is.null(grid))
+        cols <- c(cols, paste0(indexcols, grid_suffix))
+    checkParquetColumnNames(cols)
+    invisible(NULL)
+}
+
 # Shared preamble for writeCoordArray methods: unique column names,
 # append validation, max_dim validation, and CoordSchema preparation.
 .setupCoordWrite <-
@@ -99,9 +125,7 @@ function(x, path, indexcols, datacol, grid, grid_suffix,
     }
     ndim <- length(dim(x))
 
-    unique_names <- make.unique(c(indexcols, datacol), sep = "_")
-    indexcols <- head(unique_names, -1L)
-    datacol <- tail(unique_names, 1L)
+    .checkCoordNames(indexcols, datacol, grid, grid_suffix)
 
     .validateArrowtype(arrowtype)
 
